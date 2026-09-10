@@ -166,6 +166,18 @@ export default function DisplayClient({ screenSlug }: { screenSlug?: string }) {
     if (index >= views.length) setIndex(0);
   }, [index, views.length]);
   useEffect(() => setPage(0), [current?.id]);
+  // Switching to a different screen (kiosk repointed at another /view/[screenSlug]) reuses this
+  // same component instance — reset all cross-screen local state so leftover ranking snapshots,
+  // slide index and animation state from the previous screen don't leak into the new one.
+  useEffect(() => {
+    setIndex(0);
+    setPage(0);
+    snapshots.current.clear();
+    previousRects.current.clear();
+    rowElements.current.clear();
+    setChanges({});
+    setUpdateHeadline([]);
+  }, [screenSlug]);
   useEffect(() => {
     if (page >= pageCount) setPage(Math.max(0, pageCount - 1));
   }, [page, pageCount]);
