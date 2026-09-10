@@ -353,18 +353,45 @@ export const robustnessRouter = router({
       });
     });
     const verification = await buildEventBackup(ctx.prisma, input.eventId);
-    return {
-      success: true,
-      verified:
-        verification.teams.length === backup.teams.length &&
-        verification.scores.length === backup.scores.length &&
-        verification.sessions.length === backup.sessions.length,
-      counts: {
-        teams: verification.teams.length,
-        scores: verification.scores.length,
-        sessions: verification.sessions.length,
-      },
+    const verified =
+      verification.teams.length === backup.teams.length &&
+      verification.scores.length === backup.scores.length &&
+      verification.sessions.length === backup.sessions.length;
+    const counts = {
+      teams: verification.teams.length,
+      scores: verification.scores.length,
+      sessions: verification.sessions.length,
     };
+    if (!verified) {
+      // The destructive restore already committed; there is no automatic rollback at this point.
+      // Surface this as an error instead of a buried boolean so the operator can't miss that the
+      // restored data doesn't match the backup's expected counts (e.g. a truncated/corrupt file).
+      await ctx.prisma.auditLog.create({
+        data: {
+          eventId: input.eventId,
+          action: "BACKUP_RESTORE_VERIFICATION_FAILED",
+          entityType: "Event",
+          entityId: input.eventId,
+          actorRole: ctx.user.role,
+          reason: JSON.stringify({
+            expected: {
+              teams: backup.teams.length,
+              scores: backup.scores.length,
+              sessions: backup.sessions.length,
+            },
+            actual: counts,
+          }),
+        },
+      });
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message:
+          "A restauração foi aplicada, mas a verificação pós-restauração não bateu com o backup " +
+          "(contagens divergentes). Confira o log de auditoria e considere restaurar novamente " +
+          "a partir de outro snapshot.",
+      });
+    }
+    return { success: true, verified, counts };
   }),
   exportResultsCsv: adminProcedure.input(z.string()).query(async ({ ctx, input: eventId }) => {
     await assertOwnEvent(ctx.user.eventId, eventId);
