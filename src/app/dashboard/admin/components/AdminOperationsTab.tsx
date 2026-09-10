@@ -280,7 +280,14 @@ export function AdminOperationsTab({
                   <span>
                     <strong>{item.name}</strong> · {STATION_LABELS[item.type] ?? item.type}
                   </span>
-                  <button className="text-red-600" onClick={() => removeStation.mutate(item.id)}>
+                  <button
+                    className="text-red-600"
+                    onClick={() =>
+                      confirm(
+                        `Remover ${item.name}? Isso apaga permanentemente toda a agenda, fichas e notas desta mesa.`,
+                      ) && removeStation.mutate(item.id)
+                    }
+                  >
                     Remover
                   </button>
                 </div>
@@ -966,9 +973,13 @@ export function AdminOperationsTab({
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
-          {schedule
-            .filter((slot) => !scheduleExportPhase || slot.phaseId === scheduleExportPhase)
-            .map((slot, index) => (
+          {move.error && <p className="text-sm text-red-700">{move.error.message}</p>}
+          {swap.error && <p className="text-sm text-red-700">{swap.error.message}</p>}
+          {(() => {
+            const visibleSlots = schedule.filter(
+              (slot) => !scheduleExportPhase || slot.phaseId === scheduleExportPhase,
+            );
+            return visibleSlots.map((slot, index) => (
               <div
                 key={slot.id}
                 className="grid items-center gap-2 rounded-md border p-3 text-sm md:grid-cols-[150px_1fr_1fr_1fr_auto]"
@@ -1015,8 +1026,8 @@ export function AdminOperationsTab({
                     variant="outline"
                     disabled={index === 0}
                     onClick={() =>
-                      schedule[index - 1] &&
-                      swap.mutate({ firstId: slot.id, secondId: schedule[index - 1]!.id })
+                      visibleSlots[index - 1] &&
+                      swap.mutate({ firstId: slot.id, secondId: visibleSlots[index - 1]!.id })
                     }
                   >
                     ↑
@@ -1024,17 +1035,18 @@ export function AdminOperationsTab({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={index === schedule.length - 1}
+                    disabled={index === visibleSlots.length - 1}
                     onClick={() =>
-                      schedule[index + 1] &&
-                      swap.mutate({ firstId: slot.id, secondId: schedule[index + 1]!.id })
+                      visibleSlots[index + 1] &&
+                      swap.mutate({ firstId: slot.id, secondId: visibleSlots[index + 1]!.id })
                     }
                   >
                     ↓
                   </Button>
                 </div>
               </div>
-            ))}
+            ));
+          })()}
           {schedule.length === 0 && <p className="text-muted-foreground">Nenhum horário gerado.</p>}
         </CardContent>
       </Card>

@@ -644,8 +644,31 @@ export const operationRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, scheduledAt, ...data } = input;
-      const before = await ctx.prisma.scheduleSlot.findUniqueOrThrow({ where: { id } });
+      const before = await ctx.prisma.scheduleSlot.findUniqueOrThrow({
+        where: { id },
+        include: { phase: true },
+      });
       assertSessionEvent(ctx.user, before.eventId);
+      const newStationId = data.stationId ?? before.stationId;
+      const newScheduledAt = scheduledAt ? new Date(scheduledAt) : before.scheduledAt;
+      if (data.stationId || scheduledAt) {
+        const newStart = newScheduledAt.getTime();
+        const newEnd = newStart + before.phase.durationSeconds * 1000;
+        const candidates = await ctx.prisma.scheduleSlot.findMany({
+          where: { stationId: newStationId, id: { not: id } },
+          include: { phase: true },
+        });
+        const conflict = candidates.some((other) => {
+          const otherStart = other.scheduledAt.getTime();
+          const otherEnd = otherStart + other.phase.durationSeconds * 1000;
+          return newStart < otherEnd && otherStart < newEnd;
+        });
+        if (conflict)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Já existe uma rodada agendada nesta mesa neste horário.",
+          });
+      }
       const updated = await ctx.prisma.scheduleSlot.update({
         where: { id },
         data: { ...data, scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined },
