@@ -17,6 +17,7 @@ jobs:
       - run: npm run type-check
       - run: npm run lint
       - run: npm test
+      - run: npm run build
 
   browser:
     runs-on: ubuntu-latest
