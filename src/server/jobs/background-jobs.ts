@@ -55,7 +55,19 @@ async function auditBackgroundFailure(eventId: string, action: string, error: un
     .catch(() => undefined);
 }
 
+let tickRunning = false;
+
 async function tick() {
+  if (tickRunning) return;
+  tickRunning = true;
+  try {
+    await runTick();
+  } finally {
+    tickRunning = false;
+  }
+}
+
+async function runTick() {
   const now = Date.now();
   const events = await prisma.event.findMany({
     where: { OR: [{ olimpoAutoSyncEnabled: true }, { autoBackupEnabled: true }] },
