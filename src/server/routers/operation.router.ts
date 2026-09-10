@@ -915,16 +915,24 @@ export const operationRouter = router({
       if (!practicePhases.slice(1, 3).some((phase) => phase.id === slot.phaseId))
         throw new Error("O desafio surpresa só está disponível na 2ª e 3ª rodadas.");
       const banks = parseChallengeBanks(slot.event.surpriseChallengeBank);
-      const level = /nível\s*2|nivel\s*2|\bn2\b/i.test(
-        (
-          await ctx.prisma.team.findUniqueOrThrow({
-            where: { id: slot.teamId },
-            include: { category: true },
-          })
-        ).category.name,
-      )
-        ? "LEVEL2"
-        : "LEVEL1";
+      const categoryName = (
+        await ctx.prisma.team.findUniqueOrThrow({
+          where: { id: slot.teamId },
+          include: { category: true },
+        })
+      ).category.name;
+      // Word-bounded matches to avoid false positives like "Nível 2021" or "Nível 21".
+      const isLevel2 = /(?:^|[^0-9a-zà-ú])n(?:í|i)vel\s*2(?:[^0-9]|$)|\bn2\b/i.test(categoryName);
+      const isLevel1 = /(?:^|[^0-9a-zà-ú])n(?:í|i)vel\s*1(?:[^0-9]|$)|\bn1\b/i.test(categoryName);
+      if (isLevel1 && isLevel2)
+        throw new Error(
+          `Não foi possível identificar o nível do desafio surpresa para a categoria "${categoryName}": o nome menciona os dois níveis.`,
+        );
+      if (!isLevel1 && !isLevel2)
+        throw new Error(
+          `Não foi possível identificar o nível do desafio surpresa para a categoria "${categoryName}". Inclua "Nível 1" ou "Nível 2" no nome da categoria.`,
+        );
+      const level = isLevel2 ? "LEVEL2" : "LEVEL1";
       let bank = banks[level];
       bank = bank.filter((challenge) => typeof challenge === "string" && challenge.trim());
       if (!bank.length) throw new Error("Cadastre ao menos um desafio surpresa no painel admin.");
@@ -1081,8 +1089,8 @@ export const operationRouter = router({
       const now = new Date();
       let session;
       if (slot.session) {
-        session = await ctx.prisma.evaluationSession.update({
-          where: { id: slot.session.id },
+        const claimed = await ctx.prisma.evaluationSession.updateMany({
+          where: { id: slot.session.id, version: slot.session.version },
           data: {
             scorecard: input.scorecard,
             draftUpdatedAt: now,
@@ -1090,6 +1098,15 @@ export const operationRouter = router({
             draftOperatorName: input.operatorName,
             version: { increment: 1 },
           },
+        });
+        if (!claimed.count) {
+          const concurrent = await ctx.prisma.evaluationSession.findUnique({
+            where: { id: slot.session.id },
+          });
+          return { saved: false as const, conflict: concurrent ?? slot.session };
+        }
+        session = await ctx.prisma.evaluationSession.findUniqueOrThrow({
+          where: { id: slot.session.id },
         });
       } else {
         try {
@@ -1354,22 +1371,33 @@ export const operationRouter = router({
           // A ficha continua sendo salva; JSON inválido não altera o estado do desafio.
         }
       }
-      const session = slot.session
-        ? await ctx.prisma.evaluationSession.update({
-            where: { id: slot.session.id },
-            data: {
-              scorecard: input.scorecard,
-              terminalId: input.terminalId,
-              operatorName: input.operatorName,
-              announcerName: input.announcerName,
-              scorerName: input.scorerName,
-              artisticDecision: input.artisticDecision,
-              artisticDecisionReason: input.artisticDecisionReason,
-              surpriseStatus,
-              version: { increment: 1 },
-            },
-          })
-        : await ctx.prisma.evaluationSession.create({
+      let session;
+      if (slot.session) {
+        const claimed = await ctx.prisma.evaluationSession.updateMany({
+          where: { id: slot.session.id, version: slot.session.version },
+          data: {
+            scorecard: input.scorecard,
+            terminalId: input.terminalId,
+            operatorName: input.operatorName,
+            announcerName: input.announcerName,
+            scorerName: input.scorerName,
+            artisticDecision: input.artisticDecision,
+            artisticDecisionReason: input.artisticDecisionReason,
+            surpriseStatus,
+            version: { increment: 1 },
+          },
+        });
+        if (!claimed.count)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "A ficha mudou em outro tablet. Atualize antes de salvar.",
+          });
+        session = await ctx.prisma.evaluationSession.findUniqueOrThrow({
+          where: { id: slot.session.id },
+        });
+      } else {
+        try {
+          session = await ctx.prisma.evaluationSession.create({
             data: {
               slotId: slot.id,
               scorecard: input.scorecard,
@@ -1381,6 +1409,13 @@ export const operationRouter = router({
               artisticDecisionReason: input.artisticDecisionReason,
             },
           });
+        } catch {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "A ficha mudou em outro tablet. Atualize antes de salvar.",
+          });
+        }
+      }
       await audit(ctx, {
         eventId: slot.eventId,
         action: before?.state === "FINALIZED" ? "SCORECARD_CORRECTED" : "SCORECARD_SAVED",
@@ -1421,16 +1456,18 @@ export const operationRouter = router({
         orderBy: { startedAt: "desc" },
       });
       const isStationChange = !!activeUsage && activeUsage.stationId !== input.stationId;
-      await ctx.prisma.terminalUsage.updateMany({
-        where: { terminalId: terminal.id, endedAt: null },
-        data: { endedAt: new Date() },
-      });
-      const usage = await ctx.prisma.terminalUsage.create({
-        data: {
-          terminalId: terminal.id,
-          stationId: input.stationId,
-          operatorName: input.operatorName,
-        },
+      const usage = await ctx.prisma.$transaction(async (trx) => {
+        await trx.terminalUsage.updateMany({
+          where: { terminalId: terminal.id, endedAt: null },
+          data: { endedAt: new Date() },
+        });
+        return trx.terminalUsage.create({
+          data: {
+            terminalId: terminal.id,
+            stationId: input.stationId,
+            operatorName: input.operatorName,
+          },
+        });
       });
       await audit(ctx, {
         eventId: input.eventId,
@@ -1515,12 +1552,23 @@ export const operationRouter = router({
         finishedAt: ["FINALIZED", "ABSENT"].includes(input.state) ? now : undefined,
         version: { increment: 1 },
       };
-      const session = slot.session
-        ? await ctx.prisma.evaluationSession.update({
-            where: { id: slot.session.id },
-            data: stateData,
-          })
-        : await ctx.prisma.evaluationSession.create({
+      let session;
+      if (slot.session) {
+        const claimed = await ctx.prisma.evaluationSession.updateMany({
+          where: { id: slot.session.id, version: slot.session.version },
+          data: stateData,
+        });
+        if (!claimed.count)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Esta sessão foi alterada em outro tablet. Atualize a fila antes de salvar.",
+          });
+        session = await ctx.prisma.evaluationSession.findUniqueOrThrow({
+          where: { id: slot.session.id },
+        });
+      } else {
+        try {
+          session = await ctx.prisma.evaluationSession.create({
             data: {
               slotId: slot.id,
               state: input.state,
@@ -1540,6 +1588,13 @@ export const operationRouter = router({
                 : undefined,
             },
           });
+        } catch {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Esta sessão foi alterada em outro tablet. Atualize a fila antes de salvar.",
+          });
+        }
+      }
       const updatedSlot = await ctx.prisma.scheduleSlot.update({
         where: { id: slot.id },
         data: { status: input.state },
