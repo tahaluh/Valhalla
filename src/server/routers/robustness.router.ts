@@ -6,7 +6,7 @@ import { AuthService } from "@/application/services/auth.service";
 import { rankTeams } from "@/application/services/scoring.service";
 import { createHash } from "node:crypto";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { syncEventToOlimpo } from "@/server/jobs/background-jobs";
+import { syncEventToOlimpo } from "@/server/services/olimpo.service";
 import { buildEventBackup, type EventBackup } from "@/server/services/backup.service";
 
 async function assertOwnEvent(sessionEventId: string, eventId: string) {
@@ -542,106 +542,10 @@ export const robustnessRouter = router({
     }),
   syncOlimpo: adminProcedure.input(z.string()).mutation(async ({ ctx, input: eventId }) => {
     await assertOwnEvent(ctx.user.eventId, eventId);
-    const categories = await ctx.prisma.category.findMany({
-      where: { eventId },
-      include: {
-        scoreColumns: { orderBy: { order: "asc" } },
-        teams: { include: { scores: true } },
-      },
-    });
-    const steps = categories.flatMap((category) => {
-      const externalTeams = category.teams.filter(
-        (team) => team.externalId && team.externalEventToken && team.externalStepId,
-      );
-      if (!externalTeams.length) return [];
-      const ranked = rankTeams(
-        externalTeams.map((team) => ({
-          teamId: team.id,
-          teamName: team.name,
-          institution: team.institution,
-          city: team.city,
-          state: team.state,
-          scores: Array.from(
-            { length: category.scoreColumns.length },
-            (_, index) => team.scores.find((score) => score.columnIndex === index)?.value ?? 0,
-          ),
-        })),
-        category.scoringFormula,
-      );
-      const rankByTeam = new Map(ranked.map((row) => [row.teamId, row]));
-      const headers = [
-        "Posição",
-        ...category.scoreColumns.map((column) => column.name),
-        "Pontuação final",
-      ];
-      return [
-        {
-          id: externalTeams[0]!.externalStepId,
-          token: externalTeams[0]!.externalEventToken,
-          headers,
-          scores: externalTeams.map((team) => {
-            const rank = rankByTeam.get(team.id)!;
-            const headersMap: Record<string, number> = {
-              Posição: rank.rank,
-              "Pontuação final": rank.finalScore,
-            };
-            const dataMap: Record<string, string> = {};
-            category.scoreColumns.forEach((column) => {
-              headersMap[column.name] =
-                team.scores.find((score) => score.columnIndex === column.order)?.value ?? 0;
-              dataMap[column.name] = "";
-            });
-            return { id: team.externalId, dataMap, headersMap };
-          }),
-        },
-      ];
-    });
-    if (!steps.length)
-      throw new TRPCError({
-        code: "PRECONDITION_FAILED",
-        message: "Nenhuma equipe importada do Olimpo possui etapa e token para sincronização.",
-      });
-    const endpoint =
-      process.env.OLIMPO_SCORE_API_URL ?? "https://olimpo.robocup.org.br/api/events/steps/score";
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ steps }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      const body = (await response.text()).slice(0, 2000);
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${body}`);
-      const syncedAt = new Date();
-      await ctx.prisma.event.update({
-        where: { id: eventId },
-        data: {
-          olimpoLastSyncAt: syncedAt,
-          olimpoLastSyncStatus: "SUCCESS",
-          olimpoLastSyncMessage: body || "OK",
-        },
-      });
-      await ctx.prisma.auditLog.create({
-        data: {
-          eventId,
-          action: "OLIMPO_RESULTS_SYNCED",
-          entityType: "Event",
-          entityId: eventId,
-          actorRole: "ADMIN",
-          after: JSON.stringify({ steps: steps.length, syncedAt }),
-        },
-      });
-      return { success: true, steps: steps.length, syncedAt };
+      return await syncEventToOlimpo(eventId, ctx.user.role);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await ctx.prisma.event.update({
-        where: { id: eventId },
-        data: {
-          olimpoLastSyncAt: new Date(),
-          olimpoLastSyncStatus: "ERROR",
-          olimpoLastSyncMessage: message.slice(0, 2000),
-        },
-      });
       throw new TRPCError({
         code: "BAD_GATEWAY",
         message: `Falha ao sincronizar com o Olimpo: ${message}`,

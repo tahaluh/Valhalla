@@ -57,6 +57,7 @@ export const ARTISTIC_COLUMNS = [
   "Presentation 2",
   "Penalties",
   "Sustainability",
+  "Extra Round (Normalized)",
 ];
 
 // ─── Preset scoring formulas ──────────────────────────────────────────────────
@@ -97,14 +98,13 @@ export const RESCUE_SCORING_FORMULA = `(function(scores) {
 /**
  * Artistic scoring formula as specified.
  *
- * Columns: [Interview, Presentation1, Presentation2, Penalties]
- * Indices:  [0,         1,             2,             3         ]
+ * Columns: [Interview, Presentation1, Presentation2, Penalties, Sustainability, Extra]
  */
 export const ARTISTIC_SCORING_FORMULA = `(function(scores) {
   var max = scores[1] > scores[2] ? scores[1] : scores[2];
   var score = (scores[0] * 0.4) + (max * 0.6) + scores[4];
   var sum_palco = scores[1] + scores[2];
-  return [score, -sum_palco, scores[3]];
+  return [score, -sum_palco, scores[3], -(scores[5] || 0)];
 })`;
 
 export const CATEGORY_PRESETS: Record<CategoryType, CategoryPreset> = {

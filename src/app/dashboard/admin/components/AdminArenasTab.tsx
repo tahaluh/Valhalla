@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/presentation/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/presentation/components/ui/card";
 import {
   DEFAULT_RESCUE_RULESET_2026,
+  calculateArenaMaximum,
   parseRescueRuleset,
   type RescueRuleset,
 } from "@/domain/entities/ruleset";
@@ -66,6 +67,11 @@ export function AdminArenasTab({ eventId }: { eventId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
+  const arenaMaximums = useMemo(
+    () => arenas.map((arena) => ({ id: arena.id, maximum: calculateArenaMaximum(arena) })),
+    [arenas],
+  );
+  const unequalMaximums = new Set(arenaMaximums.map((item) => item.maximum)).size > 1;
   const done = () => {
     void utils.arena.listByEvent.invalidate(eventId);
     setForm(emptyForm());
@@ -399,6 +405,20 @@ export function AdminArenasTab({ eventId }: { eventId: string }) {
         </form>
       )}
       {isLoading && <p>Carregando...</p>}
+      {!showForm && arenas.length > 1 && (
+        <div
+          className={`rounded-xl border p-4 text-sm ${
+            unequalMaximums
+              ? "border-amber-300 bg-amber-50 text-amber-950"
+              : "border-green-300 bg-green-50 text-green-900"
+          }`}
+        >
+          <strong>{unequalMaximums ? "Atenção:" : "Arenas equivalentes:"}</strong>{" "}
+          {unequalMaximums
+            ? "os tetos de pontuação são diferentes. A geração avançada ficará bloqueada até a correção."
+            : `todas têm teto de ${arenaMaximums[0]?.maximum ?? 0} pontos.`}
+        </div>
+      )}
       {!showForm && (
         <div className="grid gap-4 lg:grid-cols-2">
           {arenas.map((arena) => {
@@ -438,6 +458,9 @@ export function AdminArenasTab({ eventId }: { eventId: string }) {
                   <p className="text-sm">
                     <strong>{arena.checkpointCount}</strong> checkpoints ·{" "}
                     {parseTiles(arena.checkpointTiles).join(" / ") || "sem ladrilhos"}
+                  </p>
+                  <p className="text-sm font-bold text-[#164c78]">
+                    Pontuação máxima teórica: {calculateArenaMaximum(arena)} pontos
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {CHALLENGES.filter((c) => arena[c.key] > 0).map((c) => (

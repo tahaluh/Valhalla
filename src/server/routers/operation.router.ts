@@ -6,6 +6,12 @@ import type { SessionUser } from "@/domain/entities/user";
 import { AuthService } from "@/application/services/auth.service";
 import { canStartPhase, hasVersionConflict } from "@/domain/entities/operation";
 import { generateAdvancedSchedule } from "@/domain/entities/scheduler";
+import { calculateArenaMaximum } from "@/domain/entities/ruleset";
+import {
+  calculateArtisticScore,
+  sumArtisticPresentationPenalties,
+  type ArtisticCard,
+} from "@/domain/entities/artistic";
 
 const stationSchema = z.object({
   eventId: z.string().min(1),
@@ -21,6 +27,7 @@ const phaseSchema = z.object({
   sequence: z.number().int().min(1),
   durationSeconds: z.number().int().min(1),
   calibrationSeconds: z.number().int().min(0).default(0),
+  artisticNormalizationFactor: z.number().positive().max(100).default(1),
 });
 
 function assertSessionEvent(user: SessionUser, eventId: string) {
@@ -220,6 +227,27 @@ export const operationRouter = router({
     });
     return phase;
   }),
+  setPhaseNormalizationFactor: adminProcedure
+    .input(z.object({ phaseId: z.string(), factor: z.number().positive().max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const before = await ctx.prisma.phase.findUniqueOrThrow({ where: { id: input.phaseId } });
+      assertSessionEvent(ctx.user, before.eventId);
+      if (before.type !== "EXTRA_ROUND")
+        throw new Error("A normalização só se aplica à apresentação extra.");
+      const updated = await ctx.prisma.phase.update({
+        where: { id: input.phaseId },
+        data: { artisticNormalizationFactor: input.factor },
+      });
+      await audit(ctx, {
+        eventId: before.eventId,
+        action: "ARTISTIC_NORMALIZATION_UPDATED",
+        entityType: "Phase",
+        entityId: before.id,
+        before: { factor: before.artisticNormalizationFactor },
+        after: { factor: updated.artisticNormalizationFactor },
+      });
+      return updated;
+    }),
   setPhaseStatus: adminProcedure
     .input(
       z.object({
@@ -307,9 +335,18 @@ export const operationRouter = router({
             durationSeconds: 420,
             calibrationSeconds: 0,
           },
+          {
+            eventId,
+            name: "Artística · Apresentação extra",
+            type: "EXTRA_ROUND",
+            sequence: 7,
+            durationSeconds: 420,
+            calibrationSeconds: 0,
+            artisticNormalizationFactor: 1,
+          },
         ],
       });
-      return { created: 6 };
+      return { created: 7 };
     }),
   removePhase: adminProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
     const before = await ctx.prisma.phase.findUniqueOrThrow({ where: { id: input } });
@@ -418,6 +455,19 @@ export const operationRouter = router({
         throw new Error("Categoria prática inválida.");
       if (phases.length !== 3 || stations.length !== input.stationIds.length)
         throw new Error("Rodadas ou arenas inválidas.");
+      const arenaMaximums = stations.map((station) => ({
+        name: station.name,
+        maximum: station.arena ? calculateArenaMaximum(station.arena) : null,
+      }));
+      if (arenaMaximums.some((item) => item.maximum === null))
+        throw new Error("Todo posto selecionado precisa estar vinculado a uma arena configurada.");
+      const distinctMaximums = new Set(arenaMaximums.map((item) => item.maximum));
+      if (distinctMaximums.size > 1)
+        throw new Error(
+          `As arenas precisam ter a mesma pontuação máxima: ${arenaMaximums
+            .map((item) => `${item.name} (${item.maximum} pts)`)
+            .join(", ")}.`,
+        );
       const byPhase = new Map(phases.map((phase) => [phase.id, phase]));
       const generated = generateAdvancedSchedule({
         teams,
@@ -606,14 +656,14 @@ export const operationRouter = router({
       ]);
       if (!phase || !category || selectedStations.length !== input.stationIds.length)
         throw new Error("Fase, categoria ou posto inválido.");
-      const expectsRescue = phase.type === "PRACTICE_ROUND" || phase.type === "EXTRA_ROUND";
+      const expectsRescue = phase.type === "PRACTICE_ROUND";
       if (
         (expectsRescue && category.type !== "RESCUE") ||
         (!expectsRescue && category.type !== "ARTISTIC")
       )
         throw new Error("A modalidade da categoria não corresponde à fase escolhida.");
       const permittedTypes =
-        phase.type === "PRACTICE_ROUND" || phase.type === "EXTRA_ROUND"
+        phase.type === "PRACTICE_ROUND"
           ? ["PRACTICE_ARENA", "CHALLENGE_TABLE"]
           : phase.type === "INTERVIEW"
             ? ["INTERVIEW_TABLE"]
@@ -1031,7 +1081,7 @@ export const operationRouter = router({
       });
       if (!slot) throw new Error("Horário não encontrado.");
       assertSessionEvent(ctx.user, slot.eventId);
-      if (!["INTERVIEW", "PERFORMANCE"].includes(slot.phase.type))
+      if (!["INTERVIEW", "PERFORMANCE", "EXTRA_ROUND"].includes(slot.phase.type))
         throw new Error("Notas por jurado são exclusivas da Artística.");
       const session =
         slot.session ??
@@ -1048,6 +1098,15 @@ export const operationRouter = router({
           total: input.total,
         },
         update: { scorecard: input.scorecard, total: input.total, role: slot.phase.type },
+      });
+      await ctx.prisma.evaluationSession.update({
+        where: { id: session.id },
+        data: {
+          consensusScorecard: null,
+          consensusTotal: null,
+          consensusConfirmedAt: null,
+          consensusConfirmedBy: null,
+        },
       });
       await audit(ctx, {
         eventId: slot.eventId,
@@ -1077,6 +1136,14 @@ export const operationRouter = router({
         },
         include: { judgeScores: true },
       });
+      const otherPresentationSessions = await ctx.prisma.evaluationSession.findMany({
+        where: {
+          id: { not: slot.session?.id },
+          state: "FINALIZED",
+          slot: { eventId: slot.eventId, teamId: slot.teamId, phase: { type: "PERFORMANCE" } },
+        },
+        select: { scorecard: true },
+      });
       return {
         phaseType: slot.phase.type,
         judgeScores: slot.session?.judgeScores ?? [],
@@ -1084,7 +1151,82 @@ export const operationRouter = router({
           session.judgeScores.map((judge) => judge.judgeName),
         ),
         minimumJudges: slot.phase.type === "INTERVIEW" ? 2 : 3,
+        consensusScorecard: slot.session?.consensusScorecard ?? null,
+        consensusTotal: slot.session?.consensusTotal ?? null,
+        consensusConfirmedAt: slot.session?.consensusConfirmedAt ?? null,
+        consensusConfirmedBy: slot.session?.consensusConfirmedBy ?? null,
+        otherPresentationPenalties: sumArtisticPresentationPenalties(
+          otherPresentationSessions.map((session) => session.scorecard),
+        ),
       };
+    }),
+  confirmArtisticConsensus: refereeProcedure
+    .input(
+      z.object({
+        slotId: z.string(),
+        scorecard: z.string().max(50000),
+        total: z.number().finite().min(0).max(100),
+        confirmedByName: z.string().trim().min(2).max(120),
+        terminalId: z.string().optional(),
+        operatorName: z.string().trim().min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const slot = await ctx.prisma.scheduleSlot.findUnique({
+        where: { id: input.slotId },
+        include: { phase: true, session: { include: { judgeScores: true } } },
+      });
+      if (!slot?.session) throw new Error("Salve as notas individuais antes do consenso.");
+      assertSessionEvent(ctx.user, slot.eventId);
+      if (!["INTERVIEW", "PERFORMANCE", "EXTRA_ROUND"].includes(slot.phase.type))
+        throw new Error("Consenso disponível apenas na Artística.");
+      let consensusCard: ArtisticCard;
+      try {
+        consensusCard = JSON.parse(input.scorecard) as ArtisticCard;
+      } catch {
+        throw new Error("Ficha de consenso inválida.");
+      }
+      const calculatedTotal = calculateArtisticScore(slot.phase.type, consensusCard).total;
+      if (!Number.isFinite(calculatedTotal) || Math.abs(calculatedTotal - input.total) > 0.001)
+        throw new Error("O total informado não corresponde à ficha de consenso.");
+      const minimumJudges = slot.phase.type === "INTERVIEW" ? 2 : 3;
+      if (slot.session.judgeScores.length < minimumJudges)
+        throw new Error(`Registre ao menos ${minimumJudges} jurados antes do consenso.`);
+      if (slot.phase.type !== "INTERVIEW") {
+        const interviews = await ctx.prisma.judgeScore.findMany({
+          where: {
+            session: {
+              slot: { eventId: slot.eventId, teamId: slot.teamId, phase: { type: "INTERVIEW" } },
+            },
+          },
+          select: { judgeName: true },
+        });
+        const interviewNames = new Set(interviews.map((judge) => judge.judgeName));
+        if (!slot.session.judgeScores.some((judge) => interviewNames.has(judge.judgeName)))
+          throw new Error("Ao menos um jurado precisa ter participado da entrevista.");
+      }
+      const confirmedAt = new Date();
+      const session = await ctx.prisma.evaluationSession.update({
+        where: { id: slot.session.id },
+        data: {
+          consensusScorecard: input.scorecard,
+          consensusTotal: calculatedTotal,
+          consensusConfirmedAt: confirmedAt,
+          consensusConfirmedBy: input.confirmedByName,
+        },
+      });
+      await audit(ctx, {
+        eventId: slot.eventId,
+        action: "ARTISTIC_CONSENSUS_CONFIRMED",
+        entityType: "EvaluationSession",
+        entityId: session.id,
+        stationId: slot.stationId,
+        teamId: slot.teamId,
+        terminalId: input.terminalId,
+        operatorName: input.operatorName,
+        after: { total: calculatedTotal, confirmedBy: input.confirmedByName, confirmedAt },
+      });
+      return session;
     }),
   saveScorecard: refereeProcedure
     .input(

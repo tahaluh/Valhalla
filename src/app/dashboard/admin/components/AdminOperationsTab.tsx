@@ -43,6 +43,9 @@ export function AdminOperationsTab({
   const createStation = trpc.operation.createStation.useMutation({ onSuccess: invalidate });
   const removeStation = trpc.operation.removeStation.useMutation({ onSuccess: invalidate });
   const createPhase = trpc.operation.createPhase.useMutation({ onSuccess: invalidate });
+  const setNormalization = trpc.operation.setPhaseNormalizationFactor.useMutation({
+    onSuccess: invalidate,
+  });
   const createDefaults = trpc.operation.createDefaultPhases.useMutation({ onSuccess: invalidate });
   const removePhase = trpc.operation.removePhase.useMutation({ onSuccess: invalidate });
   const setPhaseStatus = trpc.operation.setPhaseStatus.useMutation({ onSuccess: invalidate });
@@ -84,6 +87,7 @@ export function AdminOperationsTab({
     type: "PRACTICE_ROUND" as "PRACTICE_ROUND" | "INTERVIEW" | "PERFORMANCE" | "EXTRA_ROUND",
     durationSeconds: 300,
     calibrationSeconds: 120,
+    artisticNormalizationFactor: 1,
   });
   const [queue, setQueue] = useState({
     phaseId: "",
@@ -274,7 +278,7 @@ export function AdminOperationsTab({
               Criar fases padrão OBR 2026
             </Button>
           )}
-          <div className="grid gap-2 md:grid-cols-5">
+          <div className="grid gap-2 md:grid-cols-6">
             <input
               className="h-10 rounded-md border px-3"
               value={phase.name}
@@ -290,7 +294,7 @@ export function AdminOperationsTab({
               <option value="PRACTICE_ROUND">Rodada prática</option>
               <option value="INTERVIEW">Entrevista</option>
               <option value="PERFORMANCE">Apresentação</option>
-              <option value="EXTRA_ROUND">Rodada extra</option>
+              <option value="EXTRA_ROUND">Apresentação extra (Artística)</option>
             </select>
             <NumberInput
               label="Duração (s)"
@@ -302,6 +306,26 @@ export function AdminOperationsTab({
               value={phase.calibrationSeconds}
               onChange={(value) => setPhase((old) => ({ ...old, calibrationSeconds: value }))}
             />
+            {phase.type === "EXTRA_ROUND" ? (
+              <label className="text-xs font-semibold">
+                Fator de normalização
+                <input
+                  className="mt-1 h-10 w-full rounded-md border px-3"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={phase.artisticNormalizationFactor}
+                  onChange={(event) =>
+                    setPhase((old) => ({
+                      ...old,
+                      artisticNormalizationFactor: Number(event.target.value),
+                    }))
+                  }
+                />
+              </label>
+            ) : (
+              <div />
+            )}
             <Button
               onClick={() => createPhase.mutate({ eventId, ...phase, sequence: nextSequence })}
             >
@@ -317,6 +341,9 @@ export function AdminOperationsTab({
                       {item.sequence}. {item.name}
                     </strong>{" "}
                     · {Math.floor(item.durationSeconds / 60)} min
+                    {item.type === "EXTRA_ROUND"
+                      ? ` · normalização ${item.artisticNormalizationFactor}×`
+                      : ""}
                   </span>
                   <span
                     className={`rounded-full px-2 py-1 text-xs font-bold ${item.operationalStatus === "OPEN" ? "bg-green-100 text-green-800" : item.operationalStatus === "SUSPENDED" ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-slate-700"}`}
@@ -329,6 +356,23 @@ export function AdminOperationsTab({
                   </span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {item.type === "EXTRA_ROUND" && (
+                    <label className="flex items-center gap-2 text-xs font-semibold">
+                      Normalização
+                      <input
+                        className="h-8 w-20 rounded border px-2"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        defaultValue={item.artisticNormalizationFactor}
+                        onBlur={(event) => {
+                          const factor = Number(event.target.value);
+                          if (factor > 0 && factor !== item.artisticNormalizationFactor)
+                            setNormalization.mutate({ phaseId: item.id, factor });
+                        }}
+                      />
+                    </label>
+                  )}
                   <Button
                     size="sm"
                     disabled={item.operationalStatus === "OPEN"}

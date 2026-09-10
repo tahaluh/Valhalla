@@ -1,118 +1,11 @@
 import { createHash } from "node:crypto";
 import { prisma } from "@/infrastructure/database/prisma";
-import { rankTeams } from "@/application/services/scoring.service";
 import { buildEventBackup } from "@/server/services/backup.service";
+import { syncEventToOlimpo } from "@/server/services/olimpo.service";
 
 declare global {
   // eslint-disable-next-line no-var
   var __valhallaBackgroundJobs: ReturnType<typeof setInterval> | undefined;
-}
-
-export async function syncEventToOlimpo(eventId: string, actorRole = "SYSTEM") {
-  const categories = await prisma.category.findMany({
-    where: { eventId },
-    include: { scoreColumns: { orderBy: { order: "asc" } }, teams: { include: { scores: true } } },
-  });
-  const steps = categories.flatMap((category) => {
-    const teams = category.teams.filter(
-      (team) => team.externalId && team.externalEventToken && team.externalStepId,
-    );
-    if (!teams.length) return [];
-    const ranked = rankTeams(
-      teams.map((team) => ({
-        teamId: team.id,
-        teamName: team.name,
-        institution: team.institution,
-        city: team.city,
-        state: team.state,
-        scores: category.scoreColumns.map(
-          (column) => team.scores.find((score) => score.columnIndex === column.order)?.value ?? 0,
-        ),
-      })),
-      category.scoringFormula,
-    );
-    const rankById = new Map(ranked.map((row) => [row.teamId, row]));
-    const headers = [
-      "Posição",
-      ...category.scoreColumns.map((column) => column.name),
-      "Pontuação final",
-    ];
-    return [
-      {
-        id: teams[0]!.externalStepId!,
-        token: teams[0]!.externalEventToken!,
-        headers,
-        scores: teams.map((team) => {
-          const rank = rankById.get(team.id)!;
-          const dataMap: Record<string, string> = {};
-          const headersMap: Record<string, number> = {
-            Posição: rank.rank,
-            "Pontuação final": rank.finalScore,
-          };
-          category.scoreColumns.forEach((column) => {
-            dataMap[column.name] = "";
-            headersMap[column.name] =
-              team.scores.find((score) => score.columnIndex === column.order)?.value ?? 0;
-          });
-          return { id: team.externalId!, dataMap, headersMap };
-        }),
-      },
-    ];
-  });
-  if (!steps.length) throw new Error("Nenhuma equipe possui etapa, token e ID do Olimpo.");
-  const endpoint =
-    process.env.OLIMPO_SCORE_API_URL ?? "https://olimpo.robocup.org.br/api/events/steps/score";
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ steps }),
-      signal: AbortSignal.timeout(20_000),
-    });
-    const body = (await response.text()).slice(0, 2000);
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${body}`);
-    const syncedAt = new Date();
-    await prisma.event.update({
-      where: { id: eventId },
-      data: {
-        olimpoLastSyncAt: syncedAt,
-        olimpoLastSyncStatus: "SUCCESS",
-        olimpoLastSyncMessage: body || "OK",
-      },
-    });
-    await prisma.auditLog.create({
-      data: {
-        eventId,
-        action: "OLIMPO_RESULTS_SYNCED",
-        entityType: "Event",
-        entityId: eventId,
-        actorRole,
-        after: JSON.stringify({ steps: steps.length, syncedAt, endpoint }),
-      },
-    });
-    return { success: true, steps: steps.length, syncedAt };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await prisma.event.update({
-      where: { id: eventId },
-      data: {
-        olimpoLastSyncAt: new Date(),
-        olimpoLastSyncStatus: "ERROR",
-        olimpoLastSyncMessage: message.slice(0, 2000),
-      },
-    });
-    await prisma.auditLog.create({
-      data: {
-        eventId,
-        action: "OLIMPO_SYNC_FAILED",
-        entityType: "Event",
-        entityId: eventId,
-        actorRole,
-        reason: message.slice(0, 500),
-      },
-    });
-    throw error;
-  }
 }
 
 async function createAutomaticBackup(eventId: string) {

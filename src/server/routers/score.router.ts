@@ -13,6 +13,7 @@ const submitScoreSchema = z.object({
   arenaId: z.string().optional(),
   columnIndex: z.number().int().min(0),
   value: z.number(),
+  data: z.string().max(50000).default(""),
   reason: z.string().trim().max(500).optional(),
   adminPassword: z.string().min(4).optional(),
   adminAuthorizerName: z.string().trim().max(120).optional(),
@@ -29,6 +30,7 @@ const submitBatchScoreSchema = z.object({
     z.object({
       columnIndex: z.number().int().min(0),
       value: z.number(),
+      data: z.string().max(50000).default(""),
       reason: z.string().trim().max(500).optional(),
     }),
   ),
@@ -92,6 +94,7 @@ async function writeScore(ctx: Context & { user: SessionUser }, input: ScoreWrit
           where: { id: existing.id },
           data: {
             value: input.value,
+            data: input.data,
             arenaId: input.arenaId,
             submittedBy: ctx.user.role,
             ...(publicValue !== undefined ? { publicValue } : {}),
@@ -103,6 +106,7 @@ async function writeScore(ctx: Context & { user: SessionUser }, input: ScoreWrit
             categoryId: input.categoryId,
             columnIndex: input.columnIndex,
             value: input.value,
+            data: input.data,
             publicValue: publicValue ?? null,
             arenaId: input.arenaId,
             submittedBy: ctx.user.role,

@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calculateRescueScore, DEFAULT_RESCUE_RULESET_2026 } from "../src/domain/entities/ruleset";
+import {
+  calculateArenaMaximum,
+  calculateRescueScore,
+  DEFAULT_RESCUE_RULESET_2026,
+} from "../src/domain/entities/ruleset";
 
 test("checkpoint alcançado e não alcançado preservam falhas distintas", () => {
   const result = calculateRescueScore(DEFAULT_RESCUE_RULESET_2026, {
@@ -18,6 +22,21 @@ test("checkpoint alcançado e não alcançado preservam falhas distintas", () =>
   });
   assert.equal(result.failures, 5);
   assert.equal(result.base, 51);
+});
+
+test("teto teórico permite comparar arenas com configurações diferentes", () => {
+  const baseArena = {
+    checkpointTiles: [2, 3],
+    seesaws: 1,
+    intersections: 0,
+    obstacles: 0,
+    ramps: 0,
+    gaps: 0,
+    speedBumps: 0,
+    scoringRules: JSON.stringify(DEFAULT_RESCUE_RULESET_2026),
+  };
+  assert.equal(calculateArenaMaximum(baseArena), 242);
+  assert.ok(calculateArenaMaximum({ ...baseArena, seesaws: 2 }) > calculateArenaMaximum(baseArena));
 });
 
 test("multiplicadores de vítimas e desafio são aplicados sobre a base", () => {

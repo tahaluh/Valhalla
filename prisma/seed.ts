@@ -214,6 +214,7 @@ async function main() {
     ["Artística · Entrevista", "INTERVIEW", 4, 600, 0],
     ["Artística · Apresentação 1", "PERFORMANCE", 5, 420, 0],
     ["Artística · Apresentação 2", "PERFORMANCE", 6, 420, 0],
+    ["Artística · Apresentação extra", "EXTRA_ROUND", 7, 420, 0],
   ] as const;
   const phases = [];
   for (const [name, type, sequence, durationSeconds, calibrationSeconds] of phaseDefinitions) {
@@ -332,6 +333,7 @@ async function main() {
   const artisticTeams = teamsByType.ARTISTIC;
   const interview = phases.find((phase) => phase.type === "INTERVIEW")!;
   const performances = phases.filter((phase) => phase.type === "PERFORMANCE");
+  const extraPerformance = phases.find((phase) => phase.type === "EXTRA_ROUND")!;
   for (const [index, team] of artisticTeams.entries()) {
     const interviewStation = interviewStations[index % interviewStations.length]!;
     const interviewAt = at(9, 9, Math.floor(index / 2) * 15);
@@ -394,6 +396,18 @@ async function main() {
       });
       if (finalized) await createScore(team, 1, 70 + ((index * 9) % 27));
     }
+  }
+  for (const [index, team] of artisticTeams.slice(0, 2).entries()) {
+    await prisma.scheduleSlot.create({
+      data: {
+        eventId: event.id,
+        phaseId: extraPerformance.id,
+        stationId: stage.id,
+        teamId: team.id,
+        scheduledAt: at(10, 16, index * 10),
+        order: index,
+      },
+    });
   }
 
   const terminal = await prisma.terminal.create({

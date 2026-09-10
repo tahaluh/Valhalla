@@ -206,6 +206,7 @@ model Phase {
   sequence           Int
   durationSeconds    Int
   calibrationSeconds Int            @default(0)
+  artisticNormalizationFactor Float @default(1)
   operationalStatus  String         @default("CLOSED") // CLOSED | OPEN | SUSPENDED
   openedAt           DateTime?
   closedAt           DateTime?
@@ -260,6 +261,10 @@ model EvaluationSession {
   endReason               String?
   artisticDecision        String                   @default("NORMAL") // NORMAL | DISQUALIFIED | ORIGINALITY | PROHIBITED_CONTENT
   artisticDecisionReason  String?
+  consensusScorecard      String?
+  consensusTotal          Float?
+  consensusConfirmedAt    DateTime?
+  consensusConfirmedBy    String?
   surpriseEligible        Boolean                  @default(true)
   surpriseChallengeText   String?
   surpriseDrawnAt         DateTime?
@@ -443,6 +448,7 @@ model Score {
   id          String @id @default(cuid())
   columnIndex Int // which score column this value belongs to
   value       Float
+  data        String @default("") // serialized official scorecard sent to Olimpo dataMap
   // Value visible on the public ranking when the event uses manual publication.
   publicValue Float?
 

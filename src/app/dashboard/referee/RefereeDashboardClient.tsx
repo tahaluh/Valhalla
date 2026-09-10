@@ -12,6 +12,11 @@ import {
   parseRescueRuleset,
   type RescueScorecard,
 } from "@/domain/entities/ruleset";
+import {
+  calculateArtisticScore,
+  normalizeArtisticExtraScore,
+  type ArtisticCard,
+} from "@/domain/entities/artistic";
 
 const EMPTY_CARD: RescueScorecard = {
   startTile: false,
@@ -32,23 +37,6 @@ const CHALLENGES = [
   { key: "gaps", label: "Gaps" },
   { key: "speedBumps", label: "Lombadas" },
 ] as const;
-type ArtisticCard = {
-  software: number;
-  hardware: number;
-  complexity: number;
-  engineering: number;
-  teamwork: number;
-  resources: number;
-  interviewDeduction: number;
-  visual: number;
-  interaction: number;
-  features: number[];
-  interventions: number;
-  restarts: number;
-  overtimeBlocks: number;
-  presentationSeconds: number;
-  sustainability: number;
-};
 const EMPTY_ARTISTIC: ArtisticCard = {
   software: 0,
   hardware: 0,
@@ -148,7 +136,10 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
   const phaseQueue = queue.filter((slot) => slot.phaseId === phaseId);
   const current = phaseQueue.find((item) => item.id === slotId);
   const artisticContext = trpc.operation.artisticJudgingContext.useQuery(slotId, {
-    enabled: !!slotId && !!current && ["INTERVIEW", "PERFORMANCE"].includes(current.phase.type),
+    enabled:
+      !!slotId &&
+      !!current &&
+      ["INTERVIEW", "PERFORMANCE", "EXTRA_ROUND"].includes(current.phase.type),
   });
   const currentScorecard = current?.session?.scorecard;
   const stationCheckpointTiles = selectedStation?.arena?.checkpointTiles;
@@ -190,6 +181,13 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     onSuccess: async () => {
       await artisticContext.refetch();
       setMessage("Nota individual do jurado salva.");
+    },
+    onError: (error) => setMessage(error.message),
+  });
+  const confirmConsensus = trpc.operation.confirmArtisticConsensus.useMutation({
+    onSuccess: async () => {
+      await artisticContext.refetch();
+      setMessage("Ficha de consenso confirmada e pronta para finalização.");
     },
     onError: (error) => setMessage(error.message),
   });
@@ -303,7 +301,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     const payload = JSON.stringify(
       current.phase.type === "PRACTICE_ROUND"
         ? { card: effectiveRescueCard, rules, result }
-        : { artisticCard, result: calculateArtistic(current.phase.type, artisticCard) },
+        : { artisticCard, result: calculateArtisticScore(current.phase.type, artisticCard) },
     );
     if (payload === lastSavedDraft.current) return;
     const localKey = `valhalla-draft:${eventId}:${current.id}`;
@@ -520,14 +518,15 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     if (!current || !officialsReady) return setMessage("Selecione os árbitros envolvidos.");
     if (!officialsConfirmed)
       return setMessage("Confirme operador, anunciador e pontuador antes de finalizar.");
-    const isArtistic = ["INTERVIEW", "PERFORMANCE"].includes(current.phase.type);
+    const isArtistic = ["INTERVIEW", "PERFORMANCE", "EXTRA_ROUND"].includes(current.phase.type);
     const judging = artisticContext.data;
     if (isArtistic && (!judging || judging.judgeScores.length < judging.minimumJudges))
       return setMessage(
         `Salve as notas de pelo menos ${judging?.minimumJudges ?? 2} jurados antes de finalizar.`,
       );
     if (
-      current.phase.type === "PERFORMANCE" &&
+      current.phase.type !== "INTERVIEW" &&
+      isArtistic &&
       judging &&
       !judging.judgeScores.some((judge) => judging.interviewJudgeNames.includes(judge.judgeName))
     )
@@ -537,17 +536,32 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
         "Informe a fundamentação da decisão de desclassificação/originalidade/conteúdo.",
       );
     const isCorrection = current.session?.state === "FINALIZED";
+    if (isArtistic && artisticDecision === "NORMAL" && judging?.consensusTotal == null)
+      return setMessage("Confirme a ficha de consenso dos jurados antes de finalizar.");
+    let consensusCard = artisticCard;
+    if (judging?.consensusScorecard) {
+      try {
+        consensusCard = {
+          ...EMPTY_ARTISTIC,
+          ...(JSON.parse(judging.consensusScorecard) as ArtisticCard),
+        };
+      } catch {
+        return setMessage("A ficha de consenso salva está inválida. Confirme-a novamente.");
+      }
+    }
     const effectiveArtisticCard =
-      current.phase.type === "PERFORMANCE"
+      current.phase.type === "PERFORMANCE" || current.phase.type === "EXTRA_ROUND"
         ? {
-            ...artisticCard,
-            presentationSeconds: artisticCard.presentationSeconds || elapsed,
+            ...consensusCard,
+            presentationSeconds: consensusCard.presentationSeconds || elapsed,
             overtimeBlocks:
-              artisticCard.overtimeBlocks ||
+              consensusCard.overtimeBlocks ||
               Math.ceil(Math.max(0, elapsed - 300, stageElapsed - 420) / 10),
           }
-        : artisticCard;
-    const artistic = calculateArtistic(current.phase.type, effectiveArtisticCard);
+        : consensusCard;
+    const calculatedArtistic = calculateArtisticScore(current.phase.type, effectiveArtisticCard);
+    const consensusTotal = judging?.consensusTotal ?? calculatedArtistic.total;
+    const artistic = { ...calculatedArtistic, total: consensusTotal };
     const payload =
       current.phase.type === "PRACTICE_ROUND"
         ? { card: effectiveRescueCard, rules, result }
@@ -566,15 +580,13 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       artisticDecision: isArtistic ? artisticDecision : undefined,
       artisticDecisionReason: isArtistic ? artisticDecisionReason || undefined : undefined,
     });
-    const judgesAverage = judging?.judgeScores.length
-      ? judging.judgeScores.reduce((sum, judge) => sum + judge.total, 0) /
-        judging.judgeScores.length
-      : artistic.total;
     const scoreValue =
       current.phase.type === "PRACTICE_ROUND"
         ? result.total
         : artisticDecision === "NORMAL"
-          ? judgesAverage
+          ? current.phase.type === "EXTRA_ROUND"
+            ? normalizeArtisticExtraScore(consensusTotal, current.phase.artisticNormalizationFactor)
+            : consensusTotal
           : 0;
     const performanceIndex = phases
       .filter((item) => item.type === "PERFORMANCE")
@@ -584,13 +596,16 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
         ? 0
         : current.phase.type === "PERFORMANCE"
           ? 1 + Math.max(0, performanceIndex)
-          : Math.max(0, (current.phase.sequence - 1) * 2);
+          : current.phase.type === "EXTRA_ROUND"
+            ? 5
+            : Math.max(0, (current.phase.sequence - 1) * 2);
     const scores = [
-      { columnIndex, value: scoreValue },
+      { columnIndex, value: scoreValue, data: JSON.stringify(payload) },
       ...(current.phase.type === "PRACTICE_ROUND"
         ? [
             {
               columnIndex: columnIndex + 1,
+              data: JSON.stringify(payload),
               value: current.session?.endedEarly
                 ? rules.roundSeconds
                 : Math.min(elapsed, rules.roundSeconds),
@@ -598,10 +613,22 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
           ]
         : []),
       ...(current.phase.type === "INTERVIEW"
-        ? [{ columnIndex: 4, value: effectiveArtisticCard.sustainability }]
+        ? [
+            {
+              columnIndex: 4,
+              value: effectiveArtisticCard.sustainability,
+              data: JSON.stringify(payload),
+            },
+          ]
         : []),
       ...(current.phase.type === "PERFORMANCE"
-        ? [{ columnIndex: 3, value: artistic.penalties }]
+        ? [
+            {
+              columnIndex: 3,
+              value: (judging?.otherPresentationPenalties ?? 0) + artistic.penalties,
+              data: JSON.stringify(payload),
+            },
+          ]
         : []),
     ];
     await submitScore.mutateAsync({
@@ -1419,7 +1446,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                     <CardTitle>Notas individuais dos jurados</CardTitle>
                     <p className="text-sm text-muted-foreground">
                       Mínimo: {artisticContext.data?.minimumJudges ?? "…"}. Cada jurado salva sua
-                      própria ficha; o resultado usa a média.
+                      própria ficha. Depois, o grupo confirma uma única ficha de consenso oficial.
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -1439,14 +1466,29 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                       <Button
                         disabled={!selectedJudge || saveJudgeScore.isPending}
                         onClick={() =>
-                          saveJudgeScore.mutate({
-                            slotId: current.id,
-                            judgeName: selectedJudge,
-                            scorecard: JSON.stringify(artisticCard),
-                            total: calculateArtistic(current.phase.type, artisticCard).total,
-                            terminalId,
-                            operatorName,
-                          })
+                          (() => {
+                            const judgingCard =
+                              current.phase.type === "INTERVIEW"
+                                ? artisticCard
+                                : {
+                                    ...artisticCard,
+                                    presentationSeconds:
+                                      artisticCard.presentationSeconds || elapsed,
+                                    overtimeBlocks:
+                                      artisticCard.overtimeBlocks ||
+                                      Math.ceil(
+                                        Math.max(0, elapsed - 300, stageElapsed - 420) / 10,
+                                      ),
+                                  };
+                            saveJudgeScore.mutate({
+                              slotId: current.id,
+                              judgeName: selectedJudge,
+                              scorecard: JSON.stringify(judgingCard),
+                              total: calculateArtisticScore(current.phase.type, judgingCard).total,
+                              terminalId,
+                              operatorName,
+                            });
+                          })()
                         }
                       >
                         Salvar nota deste jurado
@@ -1459,11 +1501,70 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                         </Badge>
                       ))}
                     </div>
-                    {current.phase.type === "PERFORMANCE" && (
+                    {current.phase.type !== "INTERVIEW" && (
                       <p className="text-xs text-muted-foreground">
                         Jurado(s) da entrevista:{" "}
                         {artisticContext.data?.interviewJudgeNames.join(", ") ||
                           "nenhum registrado"}
+                      </p>
+                    )}
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                      <p className="text-sm font-semibold text-[#164c78]">
+                        A ficha aberta acima será registrada como o consenso do grupo.
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          disabled={confirmConsensus.isPending}
+                          onClick={() =>
+                            (() => {
+                              const consensusCard =
+                                current.phase.type === "INTERVIEW"
+                                  ? artisticCard
+                                  : {
+                                      ...artisticCard,
+                                      presentationSeconds:
+                                        artisticCard.presentationSeconds || elapsed,
+                                      overtimeBlocks:
+                                        artisticCard.overtimeBlocks ||
+                                        Math.ceil(
+                                          Math.max(0, elapsed - 300, stageElapsed - 420) / 10,
+                                        ),
+                                    };
+                              confirmConsensus.mutate({
+                                slotId: current.id,
+                                scorecard: JSON.stringify(consensusCard),
+                                total: calculateArtisticScore(current.phase.type, consensusCard)
+                                  .total,
+                                confirmedByName: scorerName || operatorName,
+                                terminalId,
+                                operatorName,
+                              });
+                            })()
+                          }
+                        >
+                          Confirmar ficha de consenso
+                        </Button>
+                        {artisticContext.data?.consensusTotal != null && (
+                          <Badge>
+                            Consenso: {artisticContext.data.consensusTotal.toFixed(1)} ·{" "}
+                            {artisticContext.data.consensusConfirmedBy}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Alterar ou salvar novamente uma nota individual invalida esta confirmação.
+                      </p>
+                    </div>
+                    {current.phase.type === "EXTRA_ROUND" && (
+                      <p className="rounded-lg bg-violet-50 p-3 text-sm text-violet-900">
+                        Nota normalizada:{" "}
+                        {calculateArtisticScore(current.phase.type, artisticCard).total.toFixed(1)}{" "}
+                        × {current.phase.artisticNormalizationFactor} ={" "}
+                        {normalizeArtisticExtraScore(
+                          calculateArtisticScore(current.phase.type, artisticCard).total,
+                          current.phase.artisticNormalizationFactor,
+                        ).toFixed(1)}
                       </p>
                     )}
                     <div className="grid gap-2 border-t pt-3 md:grid-cols-2">
@@ -1935,30 +2036,6 @@ function PracticeSheet({
     </Card>
   );
 }
-function calculateArtistic(type: string, card: ArtisticCard) {
-  if (type === "INTERVIEW") {
-    const raw =
-      card.software +
-      card.hardware +
-      card.complexity +
-      card.engineering +
-      card.teamwork +
-      card.resources;
-    return {
-      raw,
-      penalties: card.interviewDeduction,
-      total: Math.max(0, Math.min(100, raw - card.interviewDeduction)),
-    };
-  }
-  const raw = card.visual + card.interaction + card.features.reduce((sum, value) => sum + value, 0);
-  const penalties = (card.interventions + card.restarts + card.overtimeBlocks) * 3;
-  return {
-    raw,
-    penalties,
-    total: card.presentationSeconds < 90 ? 0 : Math.max(0, Math.min(100, raw - penalties)),
-  };
-}
-
 function ArtisticSheet({
   type,
   card,
@@ -1968,13 +2045,17 @@ function ArtisticSheet({
   card: ArtisticCard;
   setCard: (card: ArtisticCard) => void;
 }) {
-  const result = calculateArtistic(type, card);
+  const result = calculateArtisticScore(type, card);
   const field = (key: keyof ArtisticCard, value: number) => setCard({ ...card, [key]: value });
   return (
     <Card>
       <CardHeader>
         <CardTitle>
-          {type === "INTERVIEW" ? "Ficha · Entrevista técnica" : "Ficha · Apresentação no palco"}
+          {type === "INTERVIEW"
+            ? "Ficha · Entrevista técnica"
+            : type === "EXTRA_ROUND"
+              ? "Ficha · Apresentação extra"
+              : "Ficha · Apresentação no palco"}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">

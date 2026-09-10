@@ -138,6 +138,15 @@ async function createEventWithDefaults(
         durationSeconds: 420,
         calibrationSeconds: 0,
       },
+      {
+        eventId: event.id,
+        name: "Artística · Apresentação extra",
+        type: "EXTRA_ROUND",
+        sequence: 7,
+        durationSeconds: 420,
+        calibrationSeconds: 0,
+        artisticNormalizationFactor: 1,
+      },
     ],
   });
   const firstCategory = createdCategories[0]?.id;

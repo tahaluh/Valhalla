@@ -101,3 +101,40 @@ export function calculateRescueScore(rules: RescueRuleset, card: RescueScorecard
     failures,
   };
 }
+
+export type ArenaMaximumInput = {
+  checkpointTiles: string | number[];
+  seesaws: number;
+  intersections: number;
+  obstacles: number;
+  ramps: number;
+  gaps: number;
+  speedBumps: number;
+  scoringRules?: string | null;
+};
+
+/** Maximum reachable score, used to enforce equivalent official arenas. */
+export function calculateArenaMaximum(arena: ArenaMaximumInput) {
+  const rules = parseRescueRuleset(arena.scoringRules);
+  const tiles = Array.isArray(arena.checkpointTiles)
+    ? arena.checkpointTiles
+    : (() => {
+        try {
+          return JSON.parse(arena.checkpointTiles) as number[];
+        } catch {
+          return [];
+        }
+      })();
+  const firstAttempt = rules.checkpointAttemptPoints[0] ?? 0;
+  const base =
+    rules.startTilePoints +
+    tiles.reduce((sum, count) => sum + count * firstAttempt, 0) +
+    arena.seesaws * rules.challengePoints.seesaws +
+    arena.intersections * rules.challengePoints.intersections +
+    arena.obstacles * rules.challengePoints.obstacles +
+    arena.ramps * rules.challengePoints.ramps +
+    arena.gaps * rules.challengePoints.gaps +
+    arena.speedBumps * rules.challengePoints.speedBumps +
+    rules.exitBonusPoints;
+  return Math.ceil(base * Math.pow(rules.correctVictimMultiplier, 3));
+}

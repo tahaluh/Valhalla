@@ -1,18 +1,20 @@
 # ⚔️ Valhalla
 
-**Valhalla** is an open-source, offline-first tournament manager built specifically for the [Brazilian Robotics Olympiad (OBR)](https://www.obr.org.br/). It runs entirely on a local network — no internet required.
+**Valhalla** é um gerenciador livre de torneios para etapas presenciais da [Olimpíada Brasileira de Robótica (OBR)](https://www.obr.org.br/). A operação principal funciona em uma rede local, sem depender de internet, e a sincronização com o Olímpo pode ser feita quando houver conexão.
 
 ---
 
-## Features
+## Funcionalidades
 
-- 🏆 **Multi-category ranking** — Rescue (Levels 1 & 2) and Artistic (Levels 1 & 2)
-- 📊 **Configurable score columns** — Add, rename, reorder score columns per category
-- 🧮 **Scoring formula engine** — Custom JavaScript formulas with tiebreaker support
-- 🔐 **Offline authentication** — Role-based access (Admin / Referee / Public) with simple passwords
-- 📡 **Real-time ranking** — Auto-refreshing public ranking page
-- 🐳 **Docker-ready** — Start with a single command
-- 📱 **Responsive** — Works on tablets and phones for referee scoring
+- 🏆 **Prática e Artística** — categorias Nível 1 e Nível 2, três rodadas de Resgate e avaliação artística completa
+- 📱 **Operação por mesa** — fila, chamadas, calibração, cronômetros, ficha, ausência e reagendamento em tablets
+- 📝 **Rascunho e auditoria** — salvamento automático, histórico, identificação dos árbitros e comparação de conflitos
+- 🧮 **Regras configuráveis** — colunas, fórmulas, rulesets por arena e desempates da OBR 2026
+- 📺 **Telões públicos** — ranking animado, agenda, chamadas, avisos, imagens e situação das mesas
+- 📅 **Agenda avançada** — rodízio entre arenas fáceis, médias e difíceis, pausas e exportações
+- 🔄 **Integração com o Olímpo** — importação de equipes e sincronização manual ou periódica dos resultados
+- 💾 **Contingência local** — backup, restauração, diagnóstico, PWA e execução sem internet
+- 🐳 **Docker-ready** — inicialização por Docker Compose ou pelos scripts locais
 
 ---
 
@@ -42,7 +44,7 @@ src/
 │   ├── dashboard/
 │   │   ├── admin/             # Admin dashboard
 │   │   └── referee/           # Referee scoring interface
-│   └── ranking/               # Public ranking display
+│   └── view/                  # Telões públicos configuráveis
 ├── domain/                    # Pure domain types & interfaces
 │   ├── entities/              # Entity types (Event, Team, Category, Score, User)
 │   └── repositories/          # Repository interfaces
@@ -114,15 +116,16 @@ The database is persisted in a Docker volume (`valhalla_data`).
 
 ---
 
-## User Roles
+## Perfis de acesso
 
-| Role      | Access                                          |
-| --------- | ----------------------------------------------- |
-| `ADMIN`   | Full access: manage events, teams, categories   |
-| `REFEREE` | Submit scores for teams in their assigned arena |
-| `PUBLIC`  | View real-time rankings (no password required)  |
+| Perfil      | Acesso                                                                |
+| ----------- | --------------------------------------------------------------------- |
+| `ADMIN`     | Evento, equipes, regras, agenda, auditoria, publicação e contingência |
+| `REFEREE`   | Operação de qualquer mesa/palco e preenchimento das fichas            |
+| `SECRETARY` | Acompanhamento e ações operacionais autorizadas                       |
+| Público     | Telões em `/view` e `/view/<nome>`, sem autenticação                  |
 
-Authentication is **offline** — no email, no OAuth. The admin creates an event with two passwords (admin + referee). Users select their role and enter the corresponding password.
+A autenticação é local, sem e-mail ou OAuth. As pessoas da arbitragem são selecionadas de uma lista cadastrada no evento; inclusões excepcionais durante a operação exigem autorização administrativa.
 
 ---
 
@@ -152,18 +155,18 @@ Each category has:
 - Configurable score columns
 - A JavaScript scoring formula
 
-### Score Column Presets
+### Colunas padrão
 
 **Rescue:** Round 1 · Time 1 · Round 2 · Time 2 · Round 3 · Time 3
 
-**Artistic:** Interview · Presentation 1 · Presentation 2 · Penalties
+**Artística:** Entrevista · Apresentação 1 · Apresentação 2 · Penalidades · Sustentabilidade · Apresentação extra normalizada
 
 ### Scoring Formulas
 
 Formulas are stored as JavaScript IIFEs:
 
 ```javascript
-// Rescue: sum of best 2 rounds, tiebreaker = time of counted rounds
+// Resgate: soma das duas melhores entre três rodadas
 (function (scores) {
   var rounds = [scores[0], scores[2], scores[4]];
   var times = [scores[1], scores[3], scores[5]];
@@ -171,11 +174,11 @@ Formulas are stored as JavaScript IIFEs:
   return [total, tiebreakerTime];
 });
 
-// Artistic
+// Artística: 40% entrevista, 60% da melhor apresentação e sustentabilidade
 (function (scores) {
   var max = scores[1] > scores[2] ? scores[1] : scores[2];
-  var score = scores[0] + max;
-  return [score, scores[1] + scores[2], scores[3] * -1];
+  var score = scores[0] * 0.4 + max * 0.6 + scores[4];
+  return [score, -(scores[1] + scores[2]), scores[3], -(scores[5] || 0)];
 });
 ```
 
@@ -183,11 +186,12 @@ Formulas are stored as JavaScript IIFEs:
 
 ## Environment Variables
 
-| Variable              | Required | Description                                                |
-| --------------------- | -------- | ---------------------------------------------------------- |
-| `SESSION_SECRET`      | ✅       | Secret for iron-session (≥32 chars)                        |
-| `DATABASE_URL`        | ✅       | SQLite path (e.g. `file:./data/valhalla.db`)               |
-| `NEXT_PUBLIC_APP_URL` | ❌       | App URL for tRPC client (default: `http://localhost:3000`) |
+| Variable               | Required | Description                                                |
+| ---------------------- | -------- | ---------------------------------------------------------- |
+| `SESSION_SECRET`       | ✅       | Secret for iron-session (≥32 chars)                        |
+| `DATABASE_URL`         | ✅       | SQLite path (e.g. `file:./data/valhalla.db`)               |
+| `NEXT_PUBLIC_APP_URL`  | ❌       | App URL for tRPC client (default: `http://localhost:3000`) |
+| `OLIMPO_SCORE_API_URL` | ❌       | Endpoint de resultados do Olímpo                           |
 
 ---
 
@@ -213,29 +217,13 @@ npm run prisma:studio
 - **Server components** preferred; client components only when needed
 - **Strict TypeScript** — no `any`
 - **Feature-oriented** folder structure
-- Prepared for **real-time features** (WebSockets) in a future iteration
+- Serviços isolados para pontuação, backup e sincronização com o Olímpo
 
 ---
 
-## Contributing
+## Operação OBR presencial 2026
 
-Contributions are welcome! Please open an issue or PR.
-
----
-
-## License
-
-MIT © [Otacilio Maia](https://github.com/OtacilioN)
-
----
-
-# Extensão OBR Presencial 2026
-
-Toda a documentação original de Otacilio Maia foi preservada acima. Esta seção registra, de forma complementar, a evolução deste fork para a operação presencial completa.
-
-Sistema livre para administrar uma etapa presencial da Olimpíada Brasileira de Robótica. O Valhalla foi adaptado para operar **Prática (Resgate) e Artística**, com foco nas regras de 2026, uso em tablets, servidor na rede local, rastreabilidade das alterações e telões públicos.
-
-O projeto parte do [Valhalla original](https://github.com/OtacilioN/Valhalla) e incorpora os fluxos úteis do `tournamenter-obr`, com uma operação mais guiada e uma interface própria para administração, arbitragem, secretaria e público.
+O sistema cobre **Prática (Resgate) e Artística**, com uso em tablets, servidor na rede local, rastreabilidade das alterações e telões públicos. Os fluxos operacionais do `tournamenter-obr` foram incorporados à arquitetura e à interface do Valhalla.
 
 > A modalidade Virtual não faz parte deste escopo.
 
@@ -271,8 +259,10 @@ O projeto parte do [Valhalla original](https://github.com/OtacilioN/Valhalla) e 
 
 - Entrevista técnica e duas apresentações.
 - Cronômetros próprios de entrevista, palco e apresentação.
-- Registro por jurado, função, participação na entrevista/apresentação e consenso.
-- Penalidades, sustentabilidade, originalidade, conteúdo proibido e desclassificação.
+- Registro individual por jurado e confirmação explícita de uma ficha de consenso, com invalidação do consenso quando uma nota é alterada.
+- Mínimo de dois jurados na entrevista e três nas apresentações; ao menos um jurado do palco deve ter participado da entrevista.
+- Penalidades acumuladas entre as duas apresentações, sustentabilidade, originalidade, conteúdo proibido e desclassificação.
+- Apresentação extra para desempate, com fator de normalização configurável por fase e trilha de auditoria.
 - Melhor apresentação combinada com entrevista e sustentabilidade conforme a fórmula configurada.
 
 ### Agenda avançada
@@ -280,6 +270,7 @@ O projeto parte do [Valhalla original](https://github.com/OtacilioN/Valhalla) e 
 - Cadastro de arenas fáceis, médias e difíceis.
 - Gerador das três rodadas garantindo que cada equipe passe pelos três níveis.
 - Balanceamento entre arenas do mesmo nível.
+- Validação de que todas as arenas selecionadas possuem a mesma pontuação máxima teórica.
 - Pausas, almoço, manutenção e outros períodos indisponíveis.
 - Uma sessão não pode começar nem atravessar um período bloqueado.
 - Detecção de conflito quando uma rodada começa antes do término estimado da anterior.
@@ -325,6 +316,7 @@ Content-Type: application/json
 ```
 
 - Registro da última tentativa, retorno do serviço e falhas no painel de diagnóstico.
+- Agrupamento correto por etapa e token, com ficha serializada em `dataMap` e valores em `headersMap`.
 - Nova tentativa no próximo intervalo quando a internet volta.
 
 ### Contingência
@@ -358,7 +350,7 @@ npm run db:test-seed
 Requisitos: Node.js 20 ou superior, npm e uma máquina acessível pelos tablets na mesma rede.
 
 ```bash
-git clone https://github.com/SEU-USUARIO/Valhalla.git
+git clone https://github.com/tahaluh/Valhalla.git
 cd Valhalla
 npm install
 cp .env.example .env.local
@@ -431,7 +423,7 @@ Os dados SQLite são mantidos no volume `valhalla_data`. Em uma competição rea
 
 ## Testes automatizados
 
-A suíte cobre autenticação, regras de pontuação, duas melhores rodadas, desempates, estados de fase, autorização administrativa, concorrência, lotes de publicação, tentativas 4ª+, rodízio entre níveis de arena, pausas e conflitos de horário.
+A suíte cobre autenticação, regras de pontuação, duas melhores rodadas, desempates, consenso e normalização artística, penalidades acumuladas, estados de fase, autorização administrativa, concorrência, lotes de publicação, tentativas 4ª+, equivalência e rodízio das arenas, pausas, conflitos de horário e payload do Olímpo.
 
 ```bash
 npm run type-check
@@ -470,4 +462,4 @@ As regras puras ficam em `src/domain`, os cálculos em `src/application`, persis
 
 ## Licença e contribuições
 
-Consulte a licença do projeto original. Issues e pull requests devem descrever o cenário operacional, a regra afetada, como reproduzir e quais testes foram executados.
+Valhalla foi criado por [Otacilio Maia](https://github.com/OtacilioN) e distribuído sob a licença MIT. Issues e pull requests devem descrever o cenário operacional, a regra afetada, como reproduzir e quais testes foram executados.

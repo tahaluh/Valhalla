@@ -38,3 +38,28 @@ test("Artística combina entrevista, melhor apresentação e sustentabilidade", 
   const [total] = applyFormula(ARTISTIC_SCORING_FORMULA, [80, 70, 90, 6, 5]);
   assert.equal(total, 91);
 });
+
+test("Artística usa apresentação extra normalizada apenas como último desempate", () => {
+  const rows = rankTeams(
+    [
+      {
+        teamId: "a",
+        teamName: "A",
+        institution: "I",
+        city: "C",
+        state: "PE",
+        scores: [80, 90, 70, 3, 0, 75],
+      },
+      {
+        teamId: "b",
+        teamName: "B",
+        institution: "I",
+        city: "C",
+        state: "PE",
+        scores: [80, 90, 70, 3, 0, 81],
+      },
+    ],
+    ARTISTIC_SCORING_FORMULA,
+  );
+  assert.equal(rows[0]?.teamId, "b");
+});
