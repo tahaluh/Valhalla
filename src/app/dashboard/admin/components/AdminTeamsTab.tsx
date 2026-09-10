@@ -167,8 +167,7 @@ export function AdminTeamsTab({ eventId, categories }: AdminTeamsTabProps) {
         team.city.toLowerCase().includes(normalizedSearch) ||
         team.state.toLowerCase().includes(normalizedSearch);
 
-      const matchesCategory =
-        categoryFilter === "all" || team.categoryId === categoryFilter;
+      const matchesCategory = categoryFilter === "all" || team.categoryId === categoryFilter;
 
       const matchesAttendance =
         attendanceFilter === "all" ||
@@ -359,7 +358,8 @@ export function AdminTeamsTab({ eventId, categories }: AdminTeamsTabProps) {
             <div>
               <CardTitle>Importar Equipes do Olimpo</CardTitle>
               <CardDescription>
-                Informe o token da etapa, compare as diferenças e confirme a importação antes de gravar.
+                Informe o token da etapa, compare as diferenças e confirme a importação antes de
+                gravar.
               </CardDescription>
             </div>
             <Button
@@ -374,7 +374,10 @@ export function AdminTeamsTab({ eventId, categories }: AdminTeamsTabProps) {
         </CardHeader>
         {showOlimpoImport && (
           <CardContent className="space-y-4">
-            <form onSubmit={handlePreviewOlimpoImport} className="grid gap-4 md:grid-cols-[1.1fr_1fr_auto]">
+            <form
+              onSubmit={handlePreviewOlimpoImport}
+              className="grid gap-4 md:grid-cols-[1.1fr_1fr_auto]"
+            >
               <div className="space-y-2">
                 <label htmlFor="olimpoToken" className="text-sm font-medium">
                   Token da etapa no Olimpo
@@ -972,7 +975,7 @@ function CategoryTeamsSection({
                             revokeMutation.mutate(team.id);
                           }}
                           disabled={confirmMutation.isPending || revokeMutation.isPending}
-                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="h-4 w-4 rounded border-[#bfd0dc] text-[#164c78] focus:ring-[#f5c84c]"
                         />
                         <span className="inline-block w-21 text-sm text-muted-foreground">
                           {team.attendanceConfirmed ? "Confirmada" : "Pendente"}

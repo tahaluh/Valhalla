@@ -27,7 +27,8 @@ const olimpoImportSchema = z.object({
 });
 
 const OLIMPO_SOURCE = "OLIMPO";
-const OLIMPO_API_BASE = process.env.OLIMPO_API_BASE_URL ?? "https://olimpo.robocup.org.br/api/events/steps";
+const OLIMPO_API_BASE =
+  process.env.OLIMPO_API_BASE_URL ?? "https://olimpo.robocup.org.br/api/events/steps";
 
 type OlimpoPreviewAction = {
   action: "create" | "update";
@@ -113,7 +114,11 @@ async function assertTeamBelongsToEvent(prisma: PrismaClient, teamId: string, ev
   }
 }
 
-async function assertEventBelongsToAdmin(prisma: PrismaClient, requestedEventId: string, eventId: string) {
+async function assertEventBelongsToAdmin(
+  prisma: PrismaClient,
+  requestedEventId: string,
+  eventId: string,
+) {
   if (requestedEventId !== eventId) {
     throw new TRPCError({
       code: "FORBIDDEN",
@@ -244,7 +249,15 @@ function getChangedFields(
   nextTeam: OlimpoNormalizedTeam,
 ) {
   if (!localTeam) {
-    return ["name", "institution", "city", "state", "externalEventToken", "externalStepId", "externalStepName"];
+    return [
+      "name",
+      "institution",
+      "city",
+      "state",
+      "externalEventToken",
+      "externalStepId",
+      "externalStepName",
+    ];
   }
 
   const changedFields: string[] = [];
@@ -277,9 +290,7 @@ function buildOlimpoPreview(
   categoryId: string,
 ): OlimpoPreviewAction[] {
   const byExternalId = new Map(
-    localTeams
-      .filter((team) => team.externalId)
-      .map((team) => [team.externalId as string, team]),
+    localTeams.filter((team) => team.externalId).map((team) => [team.externalId as string, team]),
   );
 
   const byNameInstitution = new Map(
@@ -456,113 +467,84 @@ export const teamRouter = router({
     });
   }),
 
-  previewOlimpoImport: adminProcedure
-    .input(olimpoImportSchema)
-    .mutation(async ({ ctx, input }) => {
-      await assertEventBelongsToAdmin(ctx.prisma, input.eventId, ctx.user.eventId);
-      await assertCategoryBelongsToEvent(ctx.prisma, input.categoryId, ctx.user.eventId);
+  previewOlimpoImport: adminProcedure.input(olimpoImportSchema).mutation(async ({ ctx, input }) => {
+    await assertEventBelongsToAdmin(ctx.prisma, input.eventId, ctx.user.eventId);
+    await assertCategoryBelongsToEvent(ctx.prisma, input.categoryId, ctx.user.eventId);
 
-      const payload = await fetchOlimpoParticipants(input.token);
-      const importedTeams = normalizeOlimpoParticipants(payload, input.token.trim());
-      const localTeams = await ctx.prisma.team.findMany({
-        where: {
-          category: { eventId: input.eventId },
-          OR: [{ categoryId: input.categoryId }, { externalEventToken: input.token.trim() }],
-        },
-        select: {
-          id: true,
-          name: true,
-          institution: true,
-          city: true,
-          state: true,
-          categoryId: true,
-          externalId: true,
-          externalEventToken: true,
-          externalStepId: true,
-          externalStepName: true,
-        },
-      });
+    const payload = await fetchOlimpoParticipants(input.token);
+    const importedTeams = normalizeOlimpoParticipants(payload, input.token.trim());
+    const localTeams = await ctx.prisma.team.findMany({
+      where: {
+        category: { eventId: input.eventId },
+        OR: [{ categoryId: input.categoryId }, { externalEventToken: input.token.trim() }],
+      },
+      select: {
+        id: true,
+        name: true,
+        institution: true,
+        city: true,
+        state: true,
+        categoryId: true,
+        externalId: true,
+        externalEventToken: true,
+        externalStepId: true,
+        externalStepName: true,
+      },
+    });
 
-      const actions = buildOlimpoPreview(localTeams, importedTeams, input.categoryId);
-      const unchangedCount = importedTeams.length - actions.length;
-      const createCount = actions.filter((action) => action.action === "create").length;
-      const updateCount = actions.filter((action) => action.action === "update").length;
-      const step = extractStepPayload(payload);
+    const actions = buildOlimpoPreview(localTeams, importedTeams, input.categoryId);
+    const unchangedCount = importedTeams.length - actions.length;
+    const createCount = actions.filter((action) => action.action === "create").length;
+    const updateCount = actions.filter((action) => action.action === "update").length;
+    const step = extractStepPayload(payload);
 
-      return {
-        token: input.token.trim(),
-        categoryId: input.categoryId,
-        sourceStepId:
-          typeof step.id === "string" || typeof step.id === "number" ? String(step.id) : null,
-        sourceStepName: typeof step.name === "string" ? step.name.trim() || null : null,
-        summary: {
-          importedCount: importedTeams.length,
-          createCount,
-          updateCount,
-          unchangedCount,
-        },
-        actions,
-      };
-    }),
+    return {
+      token: input.token.trim(),
+      categoryId: input.categoryId,
+      sourceStepId:
+        typeof step.id === "string" || typeof step.id === "number" ? String(step.id) : null,
+      sourceStepName: typeof step.name === "string" ? step.name.trim() || null : null,
+      summary: {
+        importedCount: importedTeams.length,
+        createCount,
+        updateCount,
+        unchangedCount,
+      },
+      actions,
+    };
+  }),
 
-  applyOlimpoImport: adminProcedure
-    .input(olimpoImportSchema)
-    .mutation(async ({ ctx, input }) => {
-      await assertEventBelongsToAdmin(ctx.prisma, input.eventId, ctx.user.eventId);
-      await assertCategoryBelongsToEvent(ctx.prisma, input.categoryId, ctx.user.eventId);
+  applyOlimpoImport: adminProcedure.input(olimpoImportSchema).mutation(async ({ ctx, input }) => {
+    await assertEventBelongsToAdmin(ctx.prisma, input.eventId, ctx.user.eventId);
+    await assertCategoryBelongsToEvent(ctx.prisma, input.categoryId, ctx.user.eventId);
 
-      const payload = await fetchOlimpoParticipants(input.token);
-      const importedTeams = normalizeOlimpoParticipants(payload, input.token.trim());
-      const localTeams = await ctx.prisma.team.findMany({
-        where: {
-          category: { eventId: input.eventId },
-          OR: [{ categoryId: input.categoryId }, { externalEventToken: input.token.trim() }],
-        },
-        select: {
-          id: true,
-          name: true,
-          institution: true,
-          city: true,
-          state: true,
-          categoryId: true,
-          externalId: true,
-          externalEventToken: true,
-          externalStepId: true,
-          externalStepName: true,
-        },
-      });
+    const payload = await fetchOlimpoParticipants(input.token);
+    const importedTeams = normalizeOlimpoParticipants(payload, input.token.trim());
+    const localTeams = await ctx.prisma.team.findMany({
+      where: {
+        category: { eventId: input.eventId },
+        OR: [{ categoryId: input.categoryId }, { externalEventToken: input.token.trim() }],
+      },
+      select: {
+        id: true,
+        name: true,
+        institution: true,
+        city: true,
+        state: true,
+        categoryId: true,
+        externalId: true,
+        externalEventToken: true,
+        externalStepId: true,
+        externalStepName: true,
+      },
+    });
 
-      const actions = buildOlimpoPreview(localTeams, importedTeams, input.categoryId);
+    const actions = buildOlimpoPreview(localTeams, importedTeams, input.categoryId);
 
-      await ctx.prisma.$transaction(async (tx) => {
-        for (const action of actions) {
-          if (action.action === "create") {
-            await tx.team.create({
-              data: {
-                name: action.next.name,
-                institution: action.next.institution,
-                city: action.next.city,
-                state: action.next.state,
-                categoryId: input.categoryId,
-                externalSource: OLIMPO_SOURCE,
-                externalId: action.externalId,
-                externalEventToken: action.next.externalEventToken,
-                externalStepId: action.next.externalStepId,
-                externalStepName: action.next.externalStepName,
-              },
-            });
-            continue;
-          }
-
-          if (!action.localTeamId) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: "Ação de atualização sem time local correspondente.",
-            });
-          }
-
-          await tx.team.update({
-            where: { id: action.localTeamId },
+    await ctx.prisma.$transaction(async (tx) => {
+      for (const action of actions) {
+        if (action.action === "create") {
+          await tx.team.create({
             data: {
               name: action.next.name,
               institution: action.next.institution,
@@ -576,15 +558,40 @@ export const teamRouter = router({
               externalStepName: action.next.externalStepName,
             },
           });
+          continue;
         }
-      });
 
-      return {
-        appliedCount: actions.length,
-        createCount: actions.filter((action) => action.action === "create").length,
-        updateCount: actions.filter((action) => action.action === "update").length,
-      };
-    }),
+        if (!action.localTeamId) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Ação de atualização sem time local correspondente.",
+          });
+        }
+
+        await tx.team.update({
+          where: { id: action.localTeamId },
+          data: {
+            name: action.next.name,
+            institution: action.next.institution,
+            city: action.next.city,
+            state: action.next.state,
+            categoryId: input.categoryId,
+            externalSource: OLIMPO_SOURCE,
+            externalId: action.externalId,
+            externalEventToken: action.next.externalEventToken,
+            externalStepId: action.next.externalStepId,
+            externalStepName: action.next.externalStepName,
+          },
+        });
+      }
+    });
+
+    return {
+      appliedCount: actions.length,
+      createCount: actions.filter((action) => action.action === "create").length,
+      updateCount: actions.filter((action) => action.action === "update").length,
+    };
+  }),
 
   /**
    * Create a team with attendance already confirmed.

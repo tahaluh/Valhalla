@@ -20,6 +20,7 @@ interface CategoryListItem {
 }
 
 interface AdminScoringTabProps {
+  eventId: string;
   categories: CategoryListItem[];
 }
 
@@ -27,16 +28,25 @@ interface EditingCell {
   teamId: string;
   columnIndex: number;
   value: string;
+  reason: string;
+  adminAuthorizerName: string;
 }
 
-export function AdminScoringTab({ categories }: AdminScoringTabProps) {
+export function AdminScoringTab({ eventId, categories }: AdminScoringTabProps) {
   const utils = trpc.useUtils();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categories[0]?.id ?? "");
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [saveError, setSaveError] = useState("");
+  const [publisherName, setPublisherName] = useState("Administração");
+  const [publicationNote, setPublicationNote] = useState("");
+  const { data: publicationBatches = [] } = trpc.score.listPublicationBatches.useQuery(eventId);
 
   const { data: rankingData, isLoading: loadingRanking } = trpc.score.getRanking.useQuery(
     selectedCategoryId,
+    { enabled: !!selectedCategoryId },
+  );
+  const { data: history } = trpc.score.getHistory.useQuery(
+    { categoryId: selectedCategoryId },
     { enabled: !!selectedCategoryId },
   );
 
@@ -50,12 +60,31 @@ export function AdminScoringTab({ categories }: AdminScoringTabProps) {
       setSaveError(err.message || "Erro ao salvar a pontuação.");
     },
   });
+  const publishMutation = trpc.score.publishRanking.useMutation({
+    onSuccess: async () => {
+      await utils.score.getRanking.invalidate();
+      await utils.score.listPublicationBatches.invalidate(eventId);
+    },
+  });
+  const restoreBatch = trpc.score.restorePublicationBatch.useMutation({
+    onSuccess: async () => {
+      await utils.score.getRanking.invalidate();
+      await utils.score.listPublicationBatches.invalidate(eventId);
+    },
+  });
+  const publicationModeMutation = trpc.score.setPublicationMode.useMutation({
+    onSuccess: async () => {
+      await utils.score.getRanking.invalidate();
+    },
+  });
 
   function handleEditScore(teamId: string, columnIndex: number, currentValue: number) {
     setEditingCell({
       teamId,
       columnIndex,
       value: currentValue.toString(),
+      reason: "",
+      adminAuthorizerName: "",
     });
     setSaveError("");
   }
@@ -68,12 +97,18 @@ export function AdminScoringTab({ categories }: AdminScoringTabProps) {
       setSaveError("Valor inválido");
       return;
     }
+    if (!editingCell.reason.trim() || !editingCell.adminAuthorizerName.trim()) {
+      setSaveError("Informe o motivo e o nome do administrador responsável.");
+      return;
+    }
 
     submitScoreMutation.mutate({
       teamId: editingCell.teamId,
       categoryId: selectedCategoryId,
       columnIndex: editingCell.columnIndex,
       value: newValue,
+      reason: editingCell.reason.trim(),
+      adminAuthorizerName: editingCell.adminAuthorizerName.trim(),
     });
   }
 
@@ -104,8 +139,8 @@ export function AdminScoringTab({ categories }: AdminScoringTabProps) {
               }}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                 selectedCategoryId === cat.id
-                  ? "bg-indigo-600 text-white"
-                  : "bg-white text-gray-600 hover:bg-indigo-50 border"
+                  ? "bg-[#164c78] text-white"
+                  : "border bg-white text-[#526b80] hover:bg-[#e5f0f7]"
               }`}
             >
               {cat.name}
@@ -138,6 +173,101 @@ export function AdminScoringTab({ categories }: AdminScoringTabProps) {
               {rankingData.category.type === "RESCUE" ? "Resgate" : "Artística"}
             </Badge>
           </div>
+
+          <Card className="border-[#bfd0dc] bg-[#e5f0f7]/60">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <div>
+                <p className="font-semibold">Publicação do ranking</p>
+                <p className="text-sm text-muted-foreground">
+                  {rankingData.publication.mode === "LIVE"
+                    ? "Ao vivo: cada correção aparece imediatamente na tela pública."
+                    : "Manual: as correções ficam em revisão até você publicar o próximo lote."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="rounded-md border bg-white px-3 py-2 text-sm font-medium hover:bg-[#e5f0f7] disabled:opacity-50"
+                  disabled={
+                    publicationModeMutation.isPending || rankingData.publication.mode === "LIVE"
+                  }
+                  onClick={() => publicationModeMutation.mutate({ eventId, mode: "LIVE" })}
+                >
+                  Atualizar sempre
+                </button>
+                <button
+                  className="rounded-md border bg-white px-3 py-2 text-sm font-medium hover:bg-[#e5f0f7] disabled:opacity-50"
+                  disabled={
+                    publicationModeMutation.isPending || rankingData.publication.mode === "MANUAL"
+                  }
+                  onClick={() => publicationModeMutation.mutate({ eventId, mode: "MANUAL" })}
+                >
+                  Publicar em lotes
+                </button>
+                {rankingData.publication.mode === "MANUAL" && (
+                  <div className="grid w-full gap-2 border-t pt-3 sm:grid-cols-[1fr_2fr_auto]">
+                    <input
+                      className="h-10 rounded-md border bg-white px-3 text-sm"
+                      value={publisherName}
+                      onChange={(event) => setPublisherName(event.target.value)}
+                      placeholder="Responsável"
+                    />
+                    <input
+                      className="h-10 rounded-md border bg-white px-3 text-sm"
+                      value={publicationNote}
+                      onChange={(event) => setPublicationNote(event.target.value)}
+                      placeholder="Observação deste lote"
+                    />
+                    <button
+                      className="rounded-md bg-[#164c78] px-3 py-2 text-sm font-semibold text-white hover:bg-[#123b63] disabled:opacity-50"
+                      disabled={publishMutation.isPending || publisherName.trim().length < 2}
+                      onClick={() =>
+                        publishMutation.mutate({
+                          eventId,
+                          createdByName: publisherName.trim(),
+                          note: publicationNote.trim() || undefined,
+                        })
+                      }
+                    >
+                      {publishMutation.isPending ? "Publicando..." : "Publicar lote"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          {publicationBatches.length > 0 && (
+            <Card>
+              <CardContent className="space-y-2 py-4">
+                <h3 className="font-semibold">Histórico dos lotes publicados</h3>
+                {publicationBatches.map((batch) => (
+                  <div
+                    key={batch.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"
+                  >
+                    <span>
+                      <strong>{new Date(batch.createdAt).toLocaleString("pt-BR")}</strong> ·{" "}
+                      {batch.createdByName}
+                      {batch.note ? ` · ${batch.note}` : ""}
+                    </span>
+                    <button
+                      className="font-semibold text-[#164c78]"
+                      disabled={restoreBatch.isPending}
+                      onClick={() =>
+                        confirm("Restaurar exatamente os valores públicos deste lote?") &&
+                        restoreBatch.mutate({
+                          batchId: batch.id,
+                          createdByName: publisherName.trim() || "Administração",
+                          note: "Restauração solicitada no painel",
+                        })
+                      }
+                    >
+                      Restaurar publicação
+                    </button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {saveError && (
             <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-md text-sm">
@@ -185,7 +315,7 @@ export function AdminScoringTab({ categories }: AdminScoringTabProps) {
                           <TableCell key={colIdx} className="text-right">
                             {editingCell?.teamId === team.teamId &&
                             editingCell.columnIndex === colIdx ? (
-                              <div className="flex items-center justify-end gap-1">
+                              <div className="flex min-w-72 flex-col items-stretch gap-1">
                                 <input
                                   type="number"
                                   value={editingCell.value}
@@ -199,28 +329,45 @@ export function AdminScoringTab({ categories }: AdminScoringTabProps) {
                                   autoFocus
                                   step="0.1"
                                 />
-                                <button
-                                  onClick={handleSaveScore}
-                                  disabled={submitScoreMutation.isPending}
-                                  className="text-green-600 hover:text-green-700 disabled:text-gray-400 p-1"
-                                  title="Salvar"
-                                >
-                                  ✓
-                                </button>
-                                <button
-                                  onClick={handleCancelEdit}
-                                  className="text-red-600 hover:text-red-700 p-1"
-                                  title="Cancelar"
-                                >
-                                  ✕
-                                </button>
+                                <input
+                                  className="rounded border px-2 py-1 text-xs"
+                                  placeholder="Motivo da correção"
+                                  value={editingCell.reason}
+                                  onChange={(e) =>
+                                    setEditingCell((old) =>
+                                      old ? { ...old, reason: e.target.value } : null,
+                                    )
+                                  }
+                                />
+                                <input
+                                  className="rounded border px-2 py-1 text-xs"
+                                  placeholder="Admin responsável"
+                                  value={editingCell.adminAuthorizerName}
+                                  onChange={(e) =>
+                                    setEditingCell((old) =>
+                                      old ? { ...old, adminAuthorizerName: e.target.value } : null,
+                                    )
+                                  }
+                                />
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    onClick={handleSaveScore}
+                                    disabled={submitScoreMutation.isPending}
+                                    className="text-green-700"
+                                  >
+                                    ✓ Salvar
+                                  </button>
+                                  <button onClick={handleCancelEdit} className="text-red-700">
+                                    ✕ Cancelar
+                                  </button>
+                                </div>
                               </div>
                             ) : (
                               <div className="flex items-center justify-end gap-2">
                                 <span>{score}</span>
                                 <button
                                   onClick={() => handleEditScore(team.teamId, colIdx, score)}
-                                  className="text-indigo-600 hover:text-indigo-700 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                  className="p-1 text-[#164c78] opacity-0 transition-opacity hover:text-[#123b63] group-hover:opacity-100"
                                   title="Editar"
                                 >
                                   ✏️
@@ -229,7 +376,7 @@ export function AdminScoringTab({ categories }: AdminScoringTabProps) {
                             )}
                           </TableCell>
                         ))}
-                        <TableCell className="text-right font-bold text-indigo-700">
+                        <TableCell className="text-right font-bold text-[#153c67]">
                           {team.finalScore.toFixed(2)}
                         </TableCell>
                       </TableRow>
@@ -239,6 +386,55 @@ export function AdminScoringTab({ categories }: AdminScoringTabProps) {
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardContent className="p-0 overflow-x-auto">
+              <div className="border-b px-4 py-3">
+                <h3 className="font-semibold">Histórico de alterações</h3>
+                <p className="text-sm text-muted-foreground">
+                  As últimas 100 inclusões ou correções desta categoria.
+                </p>
+              </div>
+              {history && history.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Quando</TableHead>
+                      <TableHead>Equipe</TableHead>
+                      <TableHead>Campo</TableHead>
+                      <TableHead>Alteração</TableHead>
+                      <TableHead>Por</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {history.map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          {new Date(entry.createdAt).toLocaleString("pt-BR")}
+                        </TableCell>
+                        <TableCell className="font-medium">{entry.score.team.name}</TableCell>
+                        <TableCell>
+                          {rankingData.columns[entry.score.columnIndex] ??
+                            `Campo ${entry.score.columnIndex + 1}`}
+                        </TableCell>
+                        <TableCell>
+                          {entry.previousValue ?? "—"} → <strong>{entry.nextValue}</strong>
+                          {entry.reason ? (
+                            <span className="ml-2 text-muted-foreground">({entry.reason})</span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>{entry.changedBy}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="px-4 py-6 text-sm text-muted-foreground">
+                  Nenhuma alteração registrada ainda.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

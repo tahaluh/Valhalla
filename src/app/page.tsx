@@ -23,5 +23,5 @@ export default async function HomePage() {
     redirect("/dashboard/referee");
   }
 
-  redirect("/ranking");
+  redirect("/view");
 }

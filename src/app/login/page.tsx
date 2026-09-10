@@ -69,17 +69,17 @@ export default function LoginPage() {
   return (
     <div className="valhalla-shell flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-md space-y-5">
-        <div className="rounded-sm bg-primary px-6 py-5 text-center text-primary-foreground shadow-sm">
-          <p className="text-xs font-medium uppercase tracking-[0.28em] text-primary-foreground/70">
+        <div className="rounded-xl border-b-4 border-[#f5c84c] bg-gradient-to-br from-[#153c67] via-[#5484b5] to-[#659bcf] px-6 py-6 text-center text-white shadow-lg">
+          <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#fff1a8]">
             Olimpíada Brasileira de Robótica
           </p>
-          <h1 className="mt-2 text-4xl font-light tracking-[0.08em]">Valhalla</h1>
+          <h1 className="mt-2 text-4xl font-black tracking-[0.08em]">Valhalla</h1>
           <p className="mt-2 text-sm text-primary-foreground/80">
             Gerenciador oficial de competição e pontuação
           </p>
         </div>
 
-        <Card className="valhalla-panel rounded-sm">
+        <Card className="valhalla-panel overflow-hidden rounded-xl">
           <CardHeader className="border-b bg-secondary/70">
             <CardTitle>Entrar</CardTitle>
             <CardDescription>Selecione seu papel e faça login no evento.</CardDescription>
@@ -103,7 +103,8 @@ export default function LoginPage() {
                       <option value="">Selecione um evento...</option>
                       {events.map((ev) => (
                         <option key={ev.id} value={ev.id}>
-                          {ev.isActive ? "[Ativo] " : ""}{ev.name}
+                          {ev.isActive ? "[Ativo] " : ""}
+                          {ev.name}
                         </option>
                       ))}
                     </select>
@@ -175,7 +176,11 @@ export default function LoginPage() {
 
               {error && <p className="text-sm text-destructive">{error}</p>}
 
-              <Button type="submit" className="w-full rounded-sm" disabled={loginMutation.isPending}>
+              <Button
+                type="submit"
+                className="w-full rounded-sm"
+                disabled={loginMutation.isPending}
+              >
                 {loginMutation.isPending ? "Entrando..." : "Entrar"}
               </Button>
             </form>
@@ -184,7 +189,7 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-muted-foreground">
           Apenas visualizar?{" "}
-          <a href="/ranking" className="font-medium text-primary hover:underline">
+          <a href="/view" className="font-medium text-primary hover:underline">
             Ver ranking público
           </a>
         </p>

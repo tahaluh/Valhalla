@@ -2,6 +2,7 @@ import type { AppSession } from "@/infrastructure/auth/session";
 import { getSession } from "@/infrastructure/auth/session";
 import { prisma } from "@/infrastructure/database/prisma";
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
+import { ensureBackgroundJobs } from "@/server/jobs/background-jobs";
 
 export interface Context {
   session: AppSession;
@@ -10,6 +11,7 @@ export interface Context {
 }
 
 export async function createContext(opts: FetchCreateContextFnOptions): Promise<Context> {
+  ensureBackgroundJobs();
   const session = await getSession();
 
   return {

@@ -13,10 +13,7 @@ export function formatDate(date: Date | string): string {
   });
 }
 
-export function formatDateRange(
-  startDate: Date | string,
-  endDate?: Date | string | null,
-): string {
+export function formatDateRange(startDate: Date | string, endDate?: Date | string | null): string {
   if (!endDate) {
     return formatDate(startDate);
   }

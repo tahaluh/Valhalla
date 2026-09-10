@@ -41,30 +41,37 @@ export type CategoryPreset = {
 // ─── Default categories ───────────────────────────────────────────────────────
 
 export const DEFAULT_CATEGORIES: Array<{ name: string; type: CategoryType }> = [
-  { name: "Rescue Level 1", type: "RESCUE" },
-  { name: "Rescue Level 2", type: "RESCUE" },
-  { name: "Artistic Level 1", type: "ARTISTIC" },
-  { name: "Artistic Level 2", type: "ARTISTIC" },
+  { name: "Resgate Nível 1", type: "RESCUE" },
+  { name: "Resgate Nível 2", type: "RESCUE" },
+  { name: "Artística Nível 1", type: "ARTISTIC" },
+  { name: "Artística Nível 2", type: "ARTISTIC" },
 ];
 
 // ─── Preset score column names ────────────────────────────────────────────────
 
 export const RESCUE_COLUMNS = ["Round 1", "Time 1", "Round 2", "Time 2", "Round 3", "Time 3"];
 
-export const ARTISTIC_COLUMNS = ["Interview", "Presentation 1", "Presentation 2", "Penalties"];
+export const ARTISTIC_COLUMNS = [
+  "Interview",
+  "Presentation 1",
+  "Presentation 2",
+  "Penalties",
+  "Sustainability",
+];
 
 // ─── Preset scoring formulas ──────────────────────────────────────────────────
 
 /**
  * Rescue scoring: sum of the best two rounds, discard the worst.
- * Tiebreaker: sum of times of the counted rounds (lower is better).
+ * Official 2026 tiebreakers: total time of all three rounds, fastest time
+ * among the highest-scoring rounds, discarded score, then rounds 1–3.
  *
  * Columns: [Round1, Time1, Round2, Time2, Round3, Time3]
  * Indices:  [0,      1,     2,      3,     4,      5    ]
  */
 export const RESCUE_SCORING_FORMULA = `(function(scores) {
   var rounds = [scores[0], scores[2], scores[4]];
-  var times  = [scores[1], scores[3], scores[5]];
+  var times  = [scores[1] || 300, scores[3] || 300, scores[5] || 300];
 
   // Find index of worst round
   var worstIdx = 0;
@@ -73,15 +80,18 @@ export const RESCUE_SCORING_FORMULA = `(function(scores) {
   }
 
   var total = 0;
-  var tiebreakerTime = 0;
+  var totalTime = times[0] + times[1] + times[2];
   for (var j = 0; j < rounds.length; j++) {
     if (j !== worstIdx) {
       total += rounds[j];
-      tiebreakerTime += times[j];
     }
   }
-
-  return [total, tiebreakerTime];
+  var highest = Math.max(rounds[0], rounds[1], rounds[2]);
+  var fastestHighest = 300;
+  for (var k = 0; k < rounds.length; k++) {
+    if (rounds[k] === highest && times[k] < fastestHighest) fastestHighest = times[k];
+  }
+  return [total, totalTime, fastestHighest, -rounds[worstIdx], -rounds[0], -rounds[1], -rounds[2]];
 })`;
 
 /**
@@ -92,9 +102,9 @@ export const RESCUE_SCORING_FORMULA = `(function(scores) {
  */
 export const ARTISTIC_SCORING_FORMULA = `(function(scores) {
   var max = scores[1] > scores[2] ? scores[1] : scores[2];
-  var score = scores[0] + max;
+  var score = (scores[0] * 0.4) + (max * 0.6) + scores[4];
   var sum_palco = scores[1] + scores[2];
-  return [score, sum_palco, scores[3] * -1];
+  return [score, -sum_palco, scores[3]];
 })`;
 
 export const CATEGORY_PRESETS: Record<CategoryType, CategoryPreset> = {

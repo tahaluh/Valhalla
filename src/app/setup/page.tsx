@@ -71,18 +71,21 @@ export default function SetupPage() {
   // If loading or already set up, show a minimal state
   if (needsSetupQuery.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="valhalla-shell flex min-h-screen items-center justify-center">
         <p className="text-muted-foreground">Verificando...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="valhalla-shell flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-6">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold">Valhalla</h1>
-          <p className="text-muted-foreground">Configuração Inicial</p>
+        <div className="rounded-xl border-b-4 border-[#f5c84c] bg-gradient-to-br from-[#153c67] via-[#5484b5] to-[#659bcf] p-6 text-center text-white shadow-lg">
+          <p className="text-xs font-bold uppercase tracking-[.25em] text-[#f5c84c]">
+            Olimpíada Brasileira de Robótica
+          </p>
+          <h1 className="mt-2 text-4xl font-black">Valhalla</h1>
+          <p className="text-blue-100">Configuração inicial</p>
         </div>
 
         <Card>

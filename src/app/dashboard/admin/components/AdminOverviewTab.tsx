@@ -32,7 +32,7 @@ export function AdminOverviewTab({
             <CardDescription>Categorias cadastradas no evento</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-indigo-600">{categoriesCount}</p>
+            <p className="text-3xl font-bold text-[#164c78]">{categoriesCount}</p>
           </CardContent>
         </Card>
 
@@ -42,7 +42,7 @@ export function AdminOverviewTab({
             <CardDescription>Árbitros registrados</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-indigo-600">{refereesCount}</p>
+            <p className="text-3xl font-bold text-[#164c78]">{refereesCount}</p>
           </CardContent>
         </Card>
 
@@ -52,7 +52,7 @@ export function AdminOverviewTab({
             <CardDescription>Arenas disponíveis</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold text-indigo-600">{arenasCount}</p>
+            <p className="text-3xl font-bold text-[#164c78]">{arenasCount}</p>
           </CardContent>
         </Card>
       </div>
@@ -78,7 +78,7 @@ export function AdminOverviewTab({
               disabled={isUpdating}
               onClick={onToggleSurpriseChallenge}
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
-                surpriseChallenge ? "bg-indigo-600" : "bg-input"
+                surpriseChallenge ? "bg-[#164c78]" : "bg-input"
               }`}
             >
               <span

@@ -205,19 +205,24 @@ export default function SecretariatDashboardClient({ eventId }: SecretariatDashb
   const confirmedTeams = teams?.filter((t) => t.attendanceConfirmed).length ?? 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="valhalla-shell min-h-screen">
       {/* Header */}
-      <header className="bg-white border-b shadow-sm sticky top-0 z-10">
+      <header className="sticky top-0 z-10 border-b-4 border-[#f5c84c] bg-gradient-to-r from-[#153c67] via-[#5484b5] to-[#659bcf] text-white shadow-md">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xl font-bold text-indigo-700">Valhalla</span>
-            <Badge variant="secondary">Secretaria</Badge>
+            <span className="text-xl font-bold text-white">Valhalla</span>
+            <Badge className="border border-[#ffe08a] bg-[#f5c84c] text-[#123b63] hover:bg-[#f5c84c]">
+              Secretaria
+            </Badge>
           </div>
           <div className="flex items-center gap-3">
-            {event && (
-              <span className="text-sm text-muted-foreground hidden sm:block">{event.name}</span>
-            )}
-            <Button variant="outline" size="sm" onClick={() => logoutMutation.mutate()}>
+            {event && <span className="hidden text-sm text-blue-100 sm:block">{event.name}</span>}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => logoutMutation.mutate()}
+              className="border-white/50 bg-white/10 font-semibold text-white hover:bg-white/20 hover:text-white"
+            >
               Sair
             </Button>
           </div>
@@ -229,13 +234,13 @@ export default function SecretariatDashboardClient({ eventId }: SecretariatDashb
         <div className="grid grid-cols-2 gap-4">
           <Card>
             <CardContent className="pt-4 pb-4 text-center">
-              <p className="text-3xl font-bold text-indigo-600">{confirmedTeams}</p>
+              <p className="text-3xl font-bold text-[#164c78]">{confirmedTeams}</p>
               <p className="text-sm text-muted-foreground">Equipes presentes</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4 pb-4 text-center">
-              <p className="text-3xl font-bold text-gray-600">{totalTeams}</p>
+              <p className="text-3xl font-bold text-[#315f82]">{totalTeams}</p>
               <p className="text-sm text-muted-foreground">Total de equipes</p>
             </CardContent>
           </Card>
@@ -384,7 +389,7 @@ export default function SecretariatDashboardClient({ eventId }: SecretariatDashb
             if (catTeams.length === 0 && search.trim() !== "") return null;
             return (
               <div key={cat.id}>
-                <h2 className="text-lg font-semibold text-gray-700 mb-3">
+                <h2 className="mb-3 text-lg font-semibold text-[#153c67]">
                   {cat.name}
                   <span className="ml-2 text-sm font-normal text-muted-foreground">
                     ({catTeams.filter((t) => t.attendanceConfirmed).length}/{catTeams.length}{" "}
@@ -402,8 +407,8 @@ export default function SecretariatDashboardClient({ eventId }: SecretariatDashb
                         key={team.id}
                         className={`rounded-lg border p-4 transition-colors ${
                           team.attendanceConfirmed
-                            ? "bg-green-50 border-green-300"
-                            : "bg-white border-gray-200"
+                            ? "border-[#8ec34a] bg-[#8ec34a]/10"
+                            : "border-[#bfd0dc] bg-white"
                         }`}
                       >
                         {editingTeamId === team.id ? (
@@ -418,7 +423,9 @@ export default function SecretariatDashboardClient({ eventId }: SecretariatDashb
                                 />
                               </div>
                               <div className="space-y-1 sm:col-span-2">
-                                <Label htmlFor={`edit-team-institution-${team.id}`}>Instituição</Label>
+                                <Label htmlFor={`edit-team-institution-${team.id}`}>
+                                  Instituição
+                                </Label>
                                 <Input
                                   id={`edit-team-institution-${team.id}`}
                                   value={editForm.institution}
@@ -448,9 +455,7 @@ export default function SecretariatDashboardClient({ eventId }: SecretariatDashb
                               </div>
                             </div>
 
-                            {editError && (
-                              <p className="text-sm text-destructive">{editError}</p>
-                            )}
+                            {editError && <p className="text-sm text-destructive">{editError}</p>}
 
                             <div className="flex flex-wrap gap-2">
                               <Button
@@ -473,7 +478,7 @@ export default function SecretariatDashboardClient({ eventId }: SecretariatDashb
                         ) : (
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0 flex-1">
-                              <p className="font-medium text-gray-900 truncate">{team.name}</p>
+                              <p className="truncate font-medium text-[#153c67]">{team.name}</p>
                               <p className="text-sm text-muted-foreground truncate">
                                 {team.institution} — {team.city}/{team.state}
                               </p>

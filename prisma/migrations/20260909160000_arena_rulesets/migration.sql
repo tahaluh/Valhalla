@@ -1,0 +1,3 @@
+ALTER TABLE "arenas" ADD COLUMN "rulesetName" TEXT NOT NULL DEFAULT 'OBR Prática Regional 2026';
+ALTER TABLE "arenas" ADD COLUMN "rulesetVersion" TEXT NOT NULL DEFAULT '2026.1';
+ALTER TABLE "arenas" ADD COLUMN "scoringRules" TEXT NOT NULL DEFAULT '{}';

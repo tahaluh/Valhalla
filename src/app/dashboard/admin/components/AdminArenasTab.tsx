@@ -10,320 +10,424 @@ import {
   CardHeader,
   CardTitle,
 } from "@/presentation/components/ui/card";
+import {
+  DEFAULT_RESCUE_RULESET_2026,
+  parseRescueRuleset,
+  type RescueRuleset,
+} from "@/domain/entities/ruleset";
 
-interface AdminArenasTabProps {
-  eventId: string;
-}
-
-type ArenaFormState = {
+type ChallengeKey = keyof RescueRuleset["challengePoints"];
+const CHALLENGES: Array<{ key: ChallengeKey; label: string }> = [
+  { key: "seesaws", label: "Gangorras" },
+  { key: "intersections", label: "Interseções / becos" },
+  { key: "obstacles", label: "Obstáculos" },
+  { key: "ramps", label: "Rampas" },
+  { key: "gaps", label: "Gaps" },
+  { key: "speedBumps", label: "Lombadas" },
+];
+type ArenaForm = {
   name: string;
-  checkpointCount: number;
-  checkpointTiles: string; // comma-separated numbers
-  seesaws: number;
-  intersections: number;
-  obstacles: number;
-  ramps: number;
-  gaps: number;
-  speedBumps: number;
+  difficulty: "EASY" | "MEDIUM" | "HARD";
+  checkpointMode: "UNIFORM" | "INDIVIDUAL";
+  uniformTiles: number;
+  checkpointTiles: number[];
+  quantities: Record<ChallengeKey, number>;
+  rulesetName: string;
+  rulesetVersion: string;
+  rules: RescueRuleset;
 };
 
-const emptyForm = (): ArenaFormState => ({
-  name: "",
-  checkpointCount: 0,
-  checkpointTiles: "",
-  seesaws: 0,
-  intersections: 0,
-  obstacles: 0,
-  ramps: 0,
-  gaps: 0,
-  speedBumps: 0,
-});
-
-function parseCheckpointTiles(value: string): number[] {
-  return value
-    .split(",")
-    .map((s) => parseInt(s.trim(), 10))
-    .filter((n) => !isNaN(n) && n >= 0);
+function emptyForm(): ArenaForm {
+  return {
+    name: "",
+    difficulty: "MEDIUM",
+    checkpointMode: "UNIFORM",
+    uniformTiles: 5,
+    checkpointTiles: [5, 5, 5],
+    quantities: { seesaws: 0, intersections: 0, obstacles: 0, ramps: 0, gaps: 0, speedBumps: 0 },
+    rulesetName: "OBR Prática Regional 2026",
+    rulesetVersion: "2026.1",
+    rules: structuredClone(DEFAULT_RESCUE_RULESET_2026),
+  };
 }
-
-function formatCheckpointTiles(json: string): string {
+function parseTiles(value: string): number[] {
   try {
-    const arr = JSON.parse(json) as number[];
-    return Array.isArray(arr) ? arr.join(", ") : "";
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
   } catch {
-    return "";
+    return [];
   }
 }
 
-export function AdminArenasTab({ eventId }: AdminArenasTabProps) {
+export function AdminArenasTab({ eventId }: { eventId: string }) {
   const utils = trpc.useUtils();
-  const { data: arenas, isLoading } = trpc.arena.listByEvent.useQuery(eventId);
-
-  const [showForm, setShowForm] = useState(false);
+  const { data: arenas = [], isLoading } = trpc.arena.listByEvent.useQuery(eventId);
+  const [form, setForm] = useState<ArenaForm>(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<ArenaFormState>(emptyForm());
-  const [formError, setFormError] = useState("");
-
-  const createMutation = trpc.arena.create.useMutation({
-    onSuccess: () => {
-      utils.arena.listByEvent.invalidate(eventId);
-      resetForm();
-    },
-    onError: (err) => setFormError(err.message || "Erro ao criar arena."),
-  });
-
-  const updateMutation = trpc.arena.update.useMutation({
-    onSuccess: () => {
-      utils.arena.listByEvent.invalidate(eventId);
-      resetForm();
-    },
-    onError: (err) => setFormError(err.message || "Erro ao atualizar arena."),
-  });
-
-  const deleteMutation = trpc.arena.delete.useMutation({
-    onSuccess: () => utils.arena.listByEvent.invalidate(eventId),
-  });
-
-  function resetForm() {
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState("");
+  const done = () => {
+    void utils.arena.listByEvent.invalidate(eventId);
     setForm(emptyForm());
     setEditingId(null);
     setShowForm(false);
-    setFormError("");
-  }
-
-  function handleEdit(arena: NonNullable<typeof arenas>[number]) {
-    setEditingId(arena.id);
+    setError("");
+  };
+  const create = trpc.arena.create.useMutation({
+    onSuccess: done,
+    onError: (e) => setError(e.message),
+  });
+  const update = trpc.arena.update.useMutation({
+    onSuccess: done,
+    onError: (e) => setError(e.message),
+  });
+  const remove = trpc.arena.delete.useMutation({
+    onSuccess: () => utils.arena.listByEvent.invalidate(eventId),
+  });
+  const setTilesCount = (count: number) =>
+    setForm((old) => ({
+      ...old,
+      checkpointTiles: Array.from(
+        { length: Math.max(0, count) },
+        (_, i) => old.checkpointTiles[i] ?? old.uniformTiles,
+      ),
+    }));
+  const setUniformTiles = (value: number) =>
+    setForm((old) => ({
+      ...old,
+      uniformTiles: value,
+      checkpointTiles: old.checkpointTiles.map(() => value),
+    }));
+  const setRule = <K extends keyof RescueRuleset>(key: K, value: RescueRuleset[K]) =>
+    setForm((old) => ({ ...old, rules: { ...old.rules, [key]: value } }));
+  function edit(arena: (typeof arenas)[number]) {
+    const tiles = parseTiles(arena.checkpointTiles);
+    const uniform = tiles.length < 2 || tiles.every((v) => v === tiles[0]);
     setForm({
       name: arena.name,
-      checkpointCount: arena.checkpointCount,
-      checkpointTiles: formatCheckpointTiles(arena.checkpointTiles),
-      seesaws: arena.seesaws,
-      intersections: arena.intersections,
-      obstacles: arena.obstacles,
-      ramps: arena.ramps,
-      gaps: arena.gaps,
-      speedBumps: arena.speedBumps,
+      difficulty: arena.difficulty as ArenaForm["difficulty"],
+      checkpointMode: uniform ? "UNIFORM" : "INDIVIDUAL",
+      uniformTiles: tiles[0] ?? 5,
+      checkpointTiles: tiles,
+      quantities: {
+        seesaws: arena.seesaws,
+        intersections: arena.intersections,
+        obstacles: arena.obstacles,
+        ramps: arena.ramps,
+        gaps: arena.gaps,
+        speedBumps: arena.speedBumps,
+      },
+      rulesetName: arena.rulesetName,
+      rulesetVersion: arena.rulesetVersion,
+      rules: parseRescueRuleset(arena.scoringRules),
     });
+    setEditingId(arena.id);
     setShowForm(true);
-    setFormError("");
+    setError("");
   }
-
-  function handleChange(field: keyof ArenaFormState, value: string | number) {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    setFormError("");
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError("");
-
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
     if (!form.name.trim()) {
-      setFormError("Nome da arena é obrigatório.");
+      setError("Informe o nome da arena.");
       return;
     }
-
-    const tiles = parseCheckpointTiles(form.checkpointTiles);
-    if (tiles.length !== form.checkpointCount) {
-      if (form.checkpointCount === 0 && form.checkpointTiles.trim() !== "") {
-        setFormError(
-          "Ladrilhos por checkpoint devem estar vazios quando a quantidade de checkpoints é 0.",
-        );
-      } else {
-        setFormError(
-          `Informe exatamente ${form.checkpointCount} quantidade(s) de ladrilhos, separadas por vírgula.`,
-        );
-      }
-      return;
-    }
-
-    if (editingId) {
-      updateMutation.mutate({
-        id: editingId,
-        name: form.name,
-        checkpointCount: form.checkpointCount,
-        checkpointTiles: tiles,
-        seesaws: form.seesaws,
-        intersections: form.intersections,
-        obstacles: form.obstacles,
-        ramps: form.ramps,
-        gaps: form.gaps,
-        speedBumps: form.speedBumps,
-      });
-    } else {
-      createMutation.mutate({
-        name: form.name,
-        checkpointCount: form.checkpointCount,
-        checkpointTiles: tiles,
-        seesaws: form.seesaws,
-        intersections: form.intersections,
-        obstacles: form.obstacles,
-        ramps: form.ramps,
-        gaps: form.gaps,
-        speedBumps: form.speedBumps,
-      });
-    }
+    const payload = {
+      name: form.name.trim(),
+      difficulty: form.difficulty,
+      checkpointCount: form.checkpointTiles.length,
+      checkpointTiles: form.checkpointTiles,
+      ...form.quantities,
+      rulesetName: form.rulesetName,
+      rulesetVersion: form.rulesetVersion,
+      scoringRules: form.rules,
+    };
+    if (editingId) update.mutate({ id: editingId, ...payload });
+    else create.mutate(payload);
   }
-
-  const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Arenas</h3>
+          <h3 className="text-xl font-bold">Arenas e rulesets</h3>
           <p className="text-sm text-muted-foreground">
-            Configure as arenas e seus desafios para este evento.
+            Configure a pista, seus elementos e quanto cada desafio vale.
           </p>
         </div>
-        {!showForm && <Button onClick={() => setShowForm(true)}>Adicionar Arena</Button>}
+        {!showForm && <Button onClick={() => setShowForm(true)}>Adicionar arena</Button>}
       </div>
-
       {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{editingId ? "Editar Arena" : "Nova Arena"}</CardTitle>
-            <CardDescription>Configure os desafios presentes nesta arena.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Identification */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Nome da Arena *</label>
-                <input
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  placeholder="Ex: Arena 1, Arena A, Arena Azul"
-                  value={form.name}
-                  onChange={(e) => handleChange("name", e.target.value)}
-                  required
-                />
+        <form onSubmit={submit} className="space-y-5">
+          <Card>
+            <CardHeader>
+              <CardTitle>{editingId ? "Editar arena" : "Nova arena"}</CardTitle>
+              <CardDescription>
+                O ruleset é copiado para cada sessão para preservar o cálculo original.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              <Field
+                label="Nome da arena"
+                value={form.name}
+                onChange={(v) => setForm((o) => ({ ...o, name: v }))}
+              />
+              <Field
+                label="Ruleset"
+                value={form.rulesetName}
+                onChange={(v) => setForm((o) => ({ ...o, rulesetName: v }))}
+              />
+              <Field
+                label="Versão"
+                value={form.rulesetVersion}
+                onChange={(v) => setForm((o) => ({ ...o, rulesetVersion: v }))}
+              />
+              <label className="text-sm font-medium">
+                Dificuldade da arena
+                <select
+                  className="mt-1 h-10 w-full rounded-md border px-3"
+                  value={form.difficulty}
+                  onChange={(event) =>
+                    setForm((old) => ({
+                      ...old,
+                      difficulty: event.target.value as ArenaForm["difficulty"],
+                    }))
+                  }
+                >
+                  <option value="EASY">Fácil</option>
+                  <option value="MEDIUM">Média</option>
+                  <option value="HARD">Difícil</option>
+                </select>
+              </label>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Checkpoints</CardTitle>
+              <CardDescription>
+                Use um padrão para todos ou informe cada trecho individualmente.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant={form.checkpointMode === "UNIFORM" ? "default" : "outline"}
+                  onClick={() =>
+                    setForm((o) => ({
+                      ...o,
+                      checkpointMode: "UNIFORM",
+                      checkpointTiles: o.checkpointTiles.map(() => o.uniformTiles),
+                    }))
+                  }
+                >
+                  Mesmo valor para todos
+                </Button>
+                <Button
+                  type="button"
+                  variant={form.checkpointMode === "INDIVIDUAL" ? "default" : "outline"}
+                  onClick={() => setForm((o) => ({ ...o, checkpointMode: "INDIVIDUAL" }))}
+                >
+                  Configurar individualmente
+                </Button>
               </div>
-
-              {/* Checkpoints */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold">Checkpoints e Percurso</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Quantidade de Checkpoints</label>
-                    <input
-                      type="number"
-                      min={0}
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      value={form.checkpointCount}
-                      onChange={(e) =>
-                        handleChange("checkpointCount", parseInt(e.target.value, 10) || 0)
+              {form.checkpointMode === "UNIFORM" ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <NumberField
+                    label="Quantidade de checkpoints"
+                    value={form.checkpointTiles.length}
+                    onChange={setTilesCount}
+                  />
+                  <NumberField
+                    label="Ladrilhos em cada checkpoint"
+                    value={form.uniformTiles}
+                    onChange={setUniformTiles}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {form.checkpointTiles.map((tiles, index) => (
+                      <div
+                        key={index}
+                        className="flex items-end gap-2 rounded-lg border bg-slate-50 p-3"
+                      >
+                        <NumberField
+                          label={`Checkpoint ${index + 1} · ladrilhos`}
+                          value={tiles}
+                          onChange={(value) =>
+                            setForm((o) => ({
+                              ...o,
+                              checkpointTiles: o.checkpointTiles.map((v, i) =>
+                                i === index ? value : v,
+                              ),
+                            }))
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            setForm((o) => ({
+                              ...o,
+                              checkpointTiles: o.checkpointTiles.filter((_, i) => i !== index),
+                            }))
+                          }
+                        >
+                          −
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setForm((o) => ({
+                        ...o,
+                        checkpointTiles: [...o.checkpointTiles, o.uniformTiles],
+                      }))
+                    }
+                  >
+                    + Adicionar checkpoint
+                  </Button>
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-3">
+                {form.rules.checkpointAttemptPoints.map((points, index) => (
+                  <NumberField
+                    key={index}
+                    label={`${index + 1}ª tentativa · pontos/ladrilho`}
+                    value={points}
+                    onChange={(value) =>
+                      setRule(
+                        "checkpointAttemptPoints",
+                        form.rules.checkpointAttemptPoints.map((v, i) => (i === index ? value : v)),
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Desafios do percurso</CardTitle>
+              <CardDescription>Quantidade na arena × valor unitário do ruleset.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-2">
+                {CHALLENGES.map(({ key, label }) => (
+                  <div key={key} className="grid grid-cols-2 gap-3 rounded-lg border p-3">
+                    <NumberField
+                      label={`${label} · quantidade`}
+                      value={form.quantities[key]}
+                      onChange={(value) =>
+                        setForm((o) => ({ ...o, quantities: { ...o.quantities, [key]: value } }))
+                      }
+                    />
+                    <NumberField
+                      label="Pontos por unidade"
+                      value={form.rules.challengePoints[key]}
+                      onChange={(value) =>
+                        setRule("challengePoints", { ...form.rules.challengePoints, [key]: value })
                       }
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Ladrilhos por Checkpoint</label>
-                    <input
-                      type="text"
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      placeholder="Ex: 6, 5, 7"
-                      value={form.checkpointTiles}
-                      onChange={(e) => handleChange("checkpointTiles", e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Separe os valores por vírgula. Um valor por checkpoint.
-                    </p>
-                  </div>
-                </div>
+                ))}
               </div>
-
-              {/* Challenges */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold">Desafios do Trajeto</h4>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {(
-                    [
-                      { field: "seesaws", label: "Gangorras" },
-                      { field: "intersections", label: "Interseções / Becos sem saída" },
-                      { field: "obstacles", label: "Obstáculos" },
-                      { field: "ramps", label: "Rampas" },
-                      { field: "gaps", label: "Gaps" },
-                      { field: "speedBumps", label: "Lombadas" },
-                    ] as { field: keyof ArenaFormState; label: string }[]
-                  ).map(({ field, label }) => (
-                    <div key={field} className="space-y-2">
-                      <label className="text-sm font-medium">{label}</label>
-                      <input
-                        type="number"
-                        min={0}
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        value={form[field] as number}
-                        onChange={(e) => handleChange(field, parseInt(e.target.value, 10) || 0)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {formError && <p className="text-sm text-destructive">{formError}</p>}
-
-              <div className="flex gap-2 justify-end">
-                <Button type="button" variant="outline" onClick={resetForm}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={isPending}>
-                  {isPending ? "Salvando..." : editingId ? "Salvar Alterações" : "Criar Arena"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Tempos, bônus e multiplicadores</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <NumberField
+                label="Calibração (s)"
+                value={form.rules.calibrationSeconds}
+                onChange={(v) => setRule("calibrationSeconds", v)}
+              />
+              <NumberField
+                label="Rodada (s)"
+                value={form.rules.roundSeconds}
+                onChange={(v) => setRule("roundSeconds", v)}
+              />
+              <NumberField
+                label="Ladrilho inicial"
+                value={form.rules.startTilePoints}
+                onChange={(v) => setRule("startTilePoints", v)}
+              />
+              <NumberField
+                label="Bônus de saída"
+                value={form.rules.exitBonusPoints}
+                onChange={(v) => setRule("exitBonusPoints", v)}
+              />
+              <NumberField
+                label="Desconto/falha"
+                value={form.rules.exitPenaltyPerFailure}
+                onChange={(v) => setRule("exitPenaltyPerFailure", v)}
+              />
+              <NumberField
+                label="Vítima correta ×"
+                value={form.rules.correctVictimMultiplier}
+                step="0.1"
+                onChange={(v) => setRule("correctVictimMultiplier", v)}
+              />
+              <NumberField
+                label="Vítima invertida ×"
+                value={form.rules.switchedVictimMultiplier}
+                step="0.1"
+                onChange={(v) => setRule("switchedVictimMultiplier", v)}
+              />
+              <NumberField
+                label="Desafio surpresa ×"
+                value={form.rules.surpriseChallengeMultiplier}
+                step="0.1"
+                onChange={(v) => setRule("surpriseChallengeMultiplier", v)}
+              />
+            </CardContent>
+          </Card>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={done}>
+              Cancelar
+            </Button>
+            <Button disabled={create.isPending || update.isPending}>
+              {editingId ? "Salvar alterações" : "Criar arena"}
+            </Button>
+          </div>
+        </form>
       )}
-
-      {isLoading && <p className="text-sm text-muted-foreground">Carregando arenas...</p>}
-
-      {!isLoading && arenas && arenas.length === 0 && !showForm && (
-        <p className="text-sm text-muted-foreground">
-          Nenhuma arena cadastrada. Clique em &quot;Adicionar Arena&quot; para começar.
-        </p>
-      )}
-
-      {arenas && arenas.length > 0 && (
-        <div className="space-y-4">
+      {isLoading && <p>Carregando...</p>}
+      {!showForm && (
+        <div className="grid gap-4 lg:grid-cols-2">
           {arenas.map((arena) => {
-            const tiles = (() => {
-              try {
-                return JSON.parse(arena.checkpointTiles) as number[];
-              } catch {
-                return [];
-              }
-            })();
-
-            const challenges = [
-              { label: "Gangorras", value: arena.seesaws },
-              { label: "Interseções/Becos", value: arena.intersections },
-              { label: "Obstáculos", value: arena.obstacles },
-              { label: "Rampas", value: arena.ramps },
-              { label: "Gaps", value: arena.gaps },
-              { label: "Lombadas", value: arena.speedBumps },
-            ].filter((c) => c.value > 0);
-
+            const rules = parseRescueRuleset(arena.scoringRules);
             return (
               <Card key={arena.id}>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">{arena.name}</CardTitle>
+                  <div className="flex justify-between gap-3">
+                    <div>
+                      <CardTitle>{arena.name}</CardTitle>
+                      <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-[#164c78]">
+                        {arena.difficulty === "EASY"
+                          ? "Fácil"
+                          : arena.difficulty === "HARD"
+                            ? "Difícil"
+                            : "Média"}
+                      </span>
+                      <CardDescription>
+                        {arena.rulesetName} · {arena.rulesetVersion}
+                      </CardDescription>
+                    </div>
                     <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEdit(arena)}
-                        disabled={showForm && editingId === arena.id}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => edit(arena)}>
                         Editar
                       </Button>
                       <Button
-                        variant="outline"
                         size="sm"
-                        onClick={() => {
-                          if (confirm(`Remover a arena "${arena.name}"?`)) {
-                            deleteMutation.mutate(arena.id);
-                          }
-                        }}
-                        disabled={deleteMutation.isPending}
+                        variant="outline"
+                        onClick={() => confirm(`Remover ${arena.name}?`) && remove.mutate(arena.id)}
                       >
                         Remover
                       </Button>
@@ -331,32 +435,20 @@ export function AdminArenasTab({ eventId }: AdminArenasTabProps) {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div>
-                    <p className="text-sm font-medium">Checkpoints: {arena.checkpointCount}</p>
-                    {tiles.length > 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        Ladrilhos por checkpoint:{" "}
-                        {tiles.map((t, i) => `CP${i + 1}: ${t}`).join(" | ")}
-                      </p>
-                    )}
+                  <p className="text-sm">
+                    <strong>{arena.checkpointCount}</strong> checkpoints ·{" "}
+                    {parseTiles(arena.checkpointTiles).join(" / ") || "sem ladrilhos"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {CHALLENGES.filter((c) => arena[c.key] > 0).map((c) => (
+                      <span
+                        key={c.key}
+                        className="rounded-full border bg-slate-50 px-3 py-1 text-xs"
+                      >
+                        {c.label}: {arena[c.key]} × {rules.challengePoints[c.key]} pts
+                      </span>
+                    ))}
                   </div>
-                  {challenges.length > 0 ? (
-                    <div>
-                      <p className="text-sm font-medium mb-1">Desafios:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {challenges.map((c) => (
-                          <span
-                            key={c.label}
-                            className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold"
-                          >
-                            {c.label}: {c.value}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Nenhum desafio configurado.</p>
-                  )}
                 </CardContent>
               </Card>
             );
@@ -364,5 +456,51 @@ export function AdminArenasTab({ eventId }: AdminArenasTabProps) {
         </div>
       )}
     </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="space-y-1 text-sm">
+      <span className="font-medium">{label}</span>
+      <input
+        className="h-10 w-full rounded-md border px-3"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  );
+}
+function NumberField({
+  label,
+  value,
+  onChange,
+  step = "1",
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  step?: string;
+}) {
+  return (
+    <label className="block min-w-0 flex-1 space-y-1 text-sm">
+      <span className="font-medium">{label}</span>
+      <input
+        type="number"
+        min="0"
+        step={step}
+        className="h-10 w-full rounded-md border bg-white px-3"
+        value={value}
+        onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
+      />
+    </label>
   );
 }

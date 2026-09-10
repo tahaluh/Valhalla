@@ -1,9 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, adminProcedure } from "@/server/trpc/trpc";
-import {
-  getCategoryPreset,
-} from "@/domain/entities/category";
+import { getCategoryPreset } from "@/domain/entities/category";
 
 const createCategorySchema = z.object({
   name: z.string().min(1).max(200),
@@ -77,17 +75,51 @@ export const categoryRouter = router({
         })),
       });
     }
-
+    await ctx.prisma.auditLog.create({
+      data: {
+        eventId: input.eventId,
+        action: "CATEGORY_CREATED",
+        entityType: "Category",
+        entityId: category.id,
+        actorRole: ctx.user.role,
+        after: JSON.stringify(category),
+      },
+    });
     return category;
   }),
 
   update: adminProcedure.input(updateCategorySchema).mutation(async ({ ctx, input }) => {
     const { id, ...data } = input;
-    return ctx.prisma.category.update({ where: { id }, data });
+    const before = await ctx.prisma.category.findUniqueOrThrow({ where: { id } });
+    if (before.eventId !== ctx.user.eventId) throw new TRPCError({ code: "FORBIDDEN" });
+    const updated = await ctx.prisma.category.update({ where: { id }, data });
+    await ctx.prisma.auditLog.create({
+      data: {
+        eventId: before.eventId,
+        action: "CATEGORY_UPDATED",
+        entityType: "Category",
+        entityId: id,
+        actorRole: ctx.user.role,
+        before: JSON.stringify(before),
+        after: JSON.stringify(updated),
+      },
+    });
+    return updated;
   }),
 
   delete: adminProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
+    const before = await ctx.prisma.category.findUniqueOrThrow({ where: { id: input } });
     await ctx.prisma.category.delete({ where: { id: input } });
+    await ctx.prisma.auditLog.create({
+      data: {
+        eventId: before.eventId,
+        action: "CATEGORY_REMOVED",
+        entityType: "Category",
+        entityId: input,
+        actorRole: ctx.user.role,
+        before: JSON.stringify(before),
+      },
+    });
     return { success: true };
   }),
 

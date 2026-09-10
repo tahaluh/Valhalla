@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Roboto } from "next/font/google";
 import { TRPCProvider } from "@/presentation/components/shared/TRPCProvider";
+import { ServiceWorkerRegister } from "@/presentation/components/shared/ServiceWorkerRegister";
 import "./globals.css";
 
 const roboto = Roboto({
@@ -22,7 +23,10 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={`${roboto.variable} antialiased`}>
-        <TRPCProvider>{children}</TRPCProvider>
+        <TRPCProvider>
+          <ServiceWorkerRegister />
+          {children}
+        </TRPCProvider>
       </body>
     </html>
   );

@@ -2,10 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import type { PrismaClient } from "@prisma/client";
 import { router, publicProcedure, adminProcedure } from "@/server/trpc/trpc";
-import {
-  DEFAULT_CATEGORIES,
-  getCategoryPreset,
-} from "@/domain/entities/category";
+import { DEFAULT_CATEGORIES, getCategoryPreset } from "@/domain/entities/category";
 import { AuthService } from "@/application/services/auth.service";
 
 const createEventSchema = z.object({
@@ -34,6 +31,8 @@ const updateEventSchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   surpriseChallenge: z.boolean().optional(),
+  logoUrl: z.string().url().max(2000).optional().or(z.literal("")),
+  rulesUpdateNotice: z.string().max(2000).optional(),
 });
 
 /**
@@ -65,6 +64,7 @@ async function createEventWithDefaults(
     },
   });
 
+  const createdCategories: Array<{ id: string; type: string }> = [];
   for (const [index, defaultCat] of DEFAULT_CATEGORIES.entries()) {
     const preset = getCategoryPreset(defaultCat.type);
 
@@ -85,7 +85,118 @@ async function createEventWithDefaults(
         categoryId: category.id,
       })),
     });
+    createdCategories.push({ id: category.id, type: category.type });
   }
+
+  await prisma.phase.createMany({
+    data: [
+      {
+        eventId: event.id,
+        name: "Prática · Rodada 1",
+        type: "PRACTICE_ROUND",
+        sequence: 1,
+        durationSeconds: 300,
+        calibrationSeconds: 120,
+      },
+      {
+        eventId: event.id,
+        name: "Prática · Rodada 2",
+        type: "PRACTICE_ROUND",
+        sequence: 2,
+        durationSeconds: 300,
+        calibrationSeconds: 120,
+      },
+      {
+        eventId: event.id,
+        name: "Prática · Rodada 3",
+        type: "PRACTICE_ROUND",
+        sequence: 3,
+        durationSeconds: 300,
+        calibrationSeconds: 120,
+      },
+      {
+        eventId: event.id,
+        name: "Artística · Entrevista",
+        type: "INTERVIEW",
+        sequence: 4,
+        durationSeconds: 600,
+        calibrationSeconds: 0,
+      },
+      {
+        eventId: event.id,
+        name: "Artística · Apresentação 1",
+        type: "PERFORMANCE",
+        sequence: 5,
+        durationSeconds: 420,
+        calibrationSeconds: 0,
+      },
+      {
+        eventId: event.id,
+        name: "Artística · Apresentação 2",
+        type: "PERFORMANCE",
+        sequence: 6,
+        durationSeconds: 420,
+        calibrationSeconds: 0,
+      },
+    ],
+  });
+  const firstCategory = createdCategories[0]?.id;
+  const mainScreen = await prisma.displayScreen.create({
+    data: { eventId: event.id, name: "Ranking e informações", slug: "ranking" },
+  });
+  await prisma.displayView.createMany({
+    data: [
+      {
+        eventId: event.id,
+        screenId: mainScreen.id,
+        name: "Ranking",
+        type: "RANKING",
+        order: 0,
+        durationSeconds: 20,
+        config: JSON.stringify({ categoryId: firstCategory, theme: "OBR", maxItems: 10 }),
+      },
+      {
+        eventId: event.id,
+        screenId: mainScreen.id,
+        name: "Próximos horários",
+        type: "SCHEDULE",
+        order: 1,
+        durationSeconds: 20,
+        config: JSON.stringify({ title: "Próximas atividades", theme: "OBR", maxItems: 10 }),
+      },
+      {
+        eventId: event.id,
+        screenId: mainScreen.id,
+        name: "Chamadas recentes",
+        type: "CALLS",
+        order: 2,
+        durationSeconds: 15,
+        config: JSON.stringify({ title: "Chamadas recentes", theme: "OBR", maxItems: 8 }),
+      },
+      {
+        eventId: event.id,
+        screenId: mainScreen.id,
+        name: "Mesas ao vivo",
+        type: "STATIONS",
+        order: 3,
+        durationSeconds: 18,
+        config: JSON.stringify({ title: "Mesas, arenas e palcos", theme: "OBR", maxItems: 9 }),
+      },
+      {
+        eventId: event.id,
+        screenId: mainScreen.id,
+        name: "Aviso",
+        type: "ANNOUNCEMENT",
+        order: 4,
+        durationSeconds: 15,
+        config: JSON.stringify({
+          title: "Bem-vindos à OBR",
+          message: "Acompanhe a programação e os resultados nesta tela.",
+          theme: "OBR",
+        }),
+      },
+    ],
+  });
 
   return event;
 }
@@ -111,6 +222,10 @@ export const eventRouter = router({
         startDate: true,
         endDate: true,
         isActive: true,
+        logoUrl: true,
+        rulesUpdateNotice: true,
+        resultsStatus: true,
+        resultsHomologatedAt: true,
         createdAt: true,
       },
     });
@@ -127,6 +242,8 @@ export const eventRouter = router({
         startDate: true,
         endDate: true,
         isActive: true,
+        logoUrl: true,
+        rulesUpdateNotice: true,
       },
     });
   }),
@@ -134,7 +251,30 @@ export const eventRouter = router({
   getById: publicProcedure.input(z.string()).query(async ({ ctx, input }) => {
     const event = await ctx.prisma.event.findUnique({
       where: { id: input },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        location: true,
+        startDate: true,
+        endDate: true,
+        isActive: true,
+        surpriseChallenge: true,
+        publicRankingMode: true,
+        publicRankingPublishedAt: true,
+        resultsStatus: true,
+        resultsHomologatedAt: true,
+        olimpoLastSyncAt: true,
+        olimpoLastSyncStatus: true,
+        olimpoLastSyncMessage: true,
+        olimpoAutoSyncEnabled: true,
+        olimpoSyncIntervalSeconds: true,
+        logoUrl: true,
+        rulesUpdateNotice: true,
+        autoBackupEnabled: true,
+        backupIntervalMinutes: true,
+        createdAt: true,
+        updatedAt: true,
         arenas: { orderBy: { order: "asc" } },
         categories: { orderBy: { order: "asc" } },
         referees: true,
@@ -182,7 +322,9 @@ export const eventRouter = router({
 
   update: adminProcedure.input(updateEventSchema).mutation(async ({ ctx, input }) => {
     const { id, ...data } = input;
-    return ctx.prisma.event.update({
+    if (id !== ctx.user.eventId) throw new TRPCError({ code: "FORBIDDEN" });
+    const before = await ctx.prisma.event.findUniqueOrThrow({ where: { id } });
+    const updated = await ctx.prisma.event.update({
       where: { id },
       data: {
         ...data,
@@ -190,6 +332,25 @@ export const eventRouter = router({
         endDate: data.endDate ? new Date(data.endDate) : undefined,
       },
     });
+    await ctx.prisma.auditLog.create({
+      data: {
+        eventId: id,
+        action: "EVENT_UPDATED",
+        entityType: "Event",
+        entityId: id,
+        actorRole: ctx.user.role,
+        before: JSON.stringify({
+          name: before.name,
+          description: before.description,
+          location: before.location,
+          startDate: before.startDate,
+          endDate: before.endDate,
+          surpriseChallenge: before.surpriseChallenge,
+        }),
+        after: JSON.stringify(data),
+      },
+    });
+    return updated;
   }),
 
   setActive: adminProcedure.input(z.string()).mutation(async ({ ctx, input }) => {

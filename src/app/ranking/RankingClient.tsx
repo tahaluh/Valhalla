@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import { formatDateRange } from "@/lib/utils";
@@ -25,19 +25,32 @@ export default function RankingClient() {
   const { data: categories } = trpc.category.listByEvent.useQuery(activeEvent?.id ?? "", {
     enabled: !!activeEvent?.id,
   });
-  const { data: rankingData, isLoading: loadingRanking } = trpc.score.getRanking.useQuery(
+  const { data: rankingData, isLoading: loadingRanking } = trpc.score.getPublicRanking.useQuery(
     selectedCategoryId,
     { enabled: !!selectedCategoryId, refetchInterval: 10000 },
   );
+  const previousRanks = useRef<Map<string, number>>(new Map());
+  const [rankMovement, setRankMovement] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!rankingData) return;
+    const nextMovement: Record<string, number> = {};
+    for (const team of rankingData.ranking) {
+      const previousRank = previousRanks.current.get(team.teamId);
+      nextMovement[team.teamId] = previousRank === undefined ? 0 : previousRank - team.rank;
+    }
+    previousRanks.current = new Map(rankingData.ranking.map((team) => [team.teamId, team.rank]));
+    setRankMovement(nextMovement);
+  }, [rankingData]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Header */}
-      <header className="bg-indigo-700 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-6 flex items-center justify-between">
+      <header className="border-b-4 border-[#f5c84c] bg-gradient-to-r from-[#153c67] via-[#5484b5] to-[#659bcf] text-white shadow-2xl">
+        <div className="max-w-7xl mx-auto px-5 py-3 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Valhalla</h1>
-            <p className="text-indigo-200 text-sm mt-1">Ranking em Tempo Real</p>
+            <p className="text-[10px] uppercase tracking-[0.28em] text-[#f5c84c]">OBR · Valhalla</p>
+            <h1 className="text-xl font-semibold tracking-tight">Placar</h1>
           </div>
           {activeEvent && (
             <div className="max-w-md text-right">
@@ -47,19 +60,16 @@ export default function RankingClient() {
                   Evento ativo
                 </Badge>
               </div>
-              <p className="mt-1 text-sm text-indigo-200">
+              <p className="mt-1 text-sm text-blue-100">
                 {formatDateRange(activeEvent.startDate, activeEvent.endDate)}
                 {activeEvent.location ? ` • ${activeEvent.location}` : ""}
-              </p>
-              <p className="mt-1 text-sm text-indigo-100/90">
-                {activeEvent.description || "Classificação pública da etapa atual da OBR."}
               </p>
             </div>
           )}
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-5 py-5">
         {!activeEvent ? (
           <div className="text-center py-16">
             <p className="text-xl text-muted-foreground">Nenhum evento ativo no momento.</p>
@@ -75,8 +85,8 @@ export default function RankingClient() {
                     onClick={() => setSelectedCategoryId(cat.id)}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                       selectedCategoryId === cat.id
-                        ? "bg-indigo-600 text-white"
-                        : "bg-white text-gray-600 hover:bg-indigo-50 border"
+                        ? "bg-[#f5c84c] text-[#153c67]"
+                        : "border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"
                     }`}
                   >
                     {cat.name}
@@ -103,15 +113,15 @@ export default function RankingClient() {
 
             {rankingData && (
               <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-bold">{rankingData.category.name}</h2>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-3xl font-black">{rankingData.category.name}</h2>
                   <Badge variant={rankingData.category.type === "RESCUE" ? "default" : "secondary"}>
                     {rankingData.category.type === "RESCUE" ? "Resgate" : "Artística"}
                   </Badge>
                 </div>
 
                 {rankingData.ranking.length === 0 ? (
-                  <Card>
+                  <Card className="border-white/10 bg-white/5 text-slate-100 shadow-2xl">
                     <CardContent className="py-12 text-center text-muted-foreground">
                       Nenhuma equipe confirmada ou com pontuação nesta categoria.
                     </CardContent>
@@ -120,34 +130,39 @@ export default function RankingClient() {
                   <Card>
                     <CardContent className="p-0">
                       <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-16">Pos.</TableHead>
-                            <TableHead>Equipe</TableHead>
-                            <TableHead>Instituição</TableHead>
-                            <TableHead>Cidade/UF</TableHead>
+                        <TableHeader className="bg-white/5">
+                          <TableRow className="border-white/10 hover:bg-transparent text-base">
+                            <TableHead className="w-24 text-slate-300">Pos.</TableHead>
+                            <TableHead className="text-slate-300">Equipe</TableHead>
+                            <TableHead className="text-slate-300">Instituição</TableHead>
+                            <TableHead className="text-slate-300">Cidade/UF</TableHead>
                             {rankingData.columns.map((col, i) => (
-                              <TableHead key={i} className="text-right">
+                              <TableHead key={i} className="text-right text-slate-300">
                                 {col}
                               </TableHead>
                             ))}
-                            <TableHead className="text-right font-bold">Pontuação Final</TableHead>
+                            <TableHead className="text-right font-bold text-slate-200">
+                              Pontuação Final
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {rankingData.ranking.map((team) => (
                             <TableRow
                               key={team.teamId}
-                              className={team.rank <= 3 ? "bg-yellow-50/50" : ""}
+                              className={`border-white/10 transition-colors duration-700 hover:bg-white/5 ${team.rank <= 3 ? "bg-amber-300/10" : ""}`}
                             >
                               <TableCell>
-                                <RankMedal rank={team.rank} />
+                                <RankMedal
+                                  rank={team.rank}
+                                  movement={rankMovement[team.teamId] ?? 0}
+                                />
                               </TableCell>
-                              <TableCell className="font-semibold">{team.teamName}</TableCell>
-                              <TableCell className="text-muted-foreground">
+                              <TableCell className="text-lg font-bold">{team.teamName}</TableCell>
+                              <TableCell className="text-base text-slate-300">
                                 {team.institution}
                               </TableCell>
-                              <TableCell className="text-muted-foreground">
+                              <TableCell className="text-base text-slate-300">
                                 {team.city}/{team.state}
                               </TableCell>
                               {team.scores.map((score, i) => (
@@ -155,7 +170,7 @@ export default function RankingClient() {
                                   {score}
                                 </TableCell>
                               ))}
-                              <TableCell className="text-right font-bold text-indigo-700">
+                              <TableCell className="text-right text-2xl font-black text-[#f5c84c]">
                                 {team.finalScore.toFixed(2)}
                               </TableCell>
                             </TableRow>
@@ -170,22 +185,22 @@ export default function RankingClient() {
           </div>
         )}
       </main>
-
-      {/* Auto-refresh indicator */}
-      {selectedCategoryId && (
-        <div className="fixed bottom-4 right-4">
-          <Badge variant="secondary" className="text-xs">
-            🔄 Atualização automática a cada 10s
-          </Badge>
-        </div>
-      )}
     </div>
   );
 }
 
-function RankMedal({ rank }: { rank: number }) {
-  if (rank === 1) return <span className="text-2xl">🥇</span>;
-  if (rank === 2) return <span className="text-2xl">🥈</span>;
-  if (rank === 3) return <span className="text-2xl">🥉</span>;
-  return <span className="text-muted-foreground font-mono">{rank}°</span>;
+function RankMedal({ rank, movement }: { rank: number; movement: number }) {
+  const position = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}°`;
+  const movementLabel =
+    movement > 0 ? `▲ ${movement}` : movement < 0 ? `▼ ${Math.abs(movement)}` : "—";
+  const movementClass =
+    movement > 0 ? "text-[#b9df7e]" : movement < 0 ? "text-rose-300" : "text-slate-500";
+  return (
+    <span className="flex items-center gap-2 font-mono font-bold">
+      <span className="text-xl">{position}</span>
+      <span className={`text-xs transition-all duration-500 ${movementClass}`}>
+        {movementLabel}
+      </span>
+    </span>
+  );
 }

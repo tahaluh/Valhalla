@@ -47,7 +47,7 @@ export function AdminCategoriesTab({ categories }: AdminCategoriesTabProps) {
                   </TableCell>
                   <TableCell>
                     <Button variant="outline" size="sm" asChild>
-                      <a href={`/ranking?categoryId=${category.id}`}>Ver Ranking</a>
+                      <a href="/view">Ver no telão</a>
                     </Button>
                   </TableCell>
                 </TableRow>

@@ -13,10 +13,7 @@ import {
 } from "@/presentation/components/ui/card";
 import { Badge } from "@/presentation/components/ui/badge";
 import { formatDateRange } from "@/lib/utils";
-import {
-  ADMIN_DASHBOARD_SECTIONS,
-  type AdminDashboardSectionId,
-} from "./adminDashboardSections";
+import { ADMIN_DASHBOARD_SECTIONS, type AdminDashboardSectionId } from "./adminDashboardSections";
 
 interface AdminDashboardClientProps {
   eventId: string;
@@ -37,6 +34,8 @@ export default function AdminDashboardClient({ eventId }: AdminDashboardClientPr
     location: "",
     startDate: "",
     endDate: "",
+    logoUrl: "",
+    rulesUpdateNotice: "",
   });
   const [createEventForm, setCreateEventForm] = useState({
     name: "",
@@ -102,6 +101,8 @@ export default function AdminDashboardClient({ eventId }: AdminDashboardClientPr
       location: event.location ?? "",
       startDate: toDateInputValue(event.startDate),
       endDate: event.endDate ? toDateInputValue(event.endDate) : "",
+      logoUrl: event.logoUrl ?? "",
+      rulesUpdateNotice: event.rulesUpdateNotice ?? "",
     });
   }, [event]);
 
@@ -169,6 +170,8 @@ export default function AdminDashboardClient({ eventId }: AdminDashboardClientPr
       name: eventForm.name.trim(),
       description: emptyToUndefined(eventForm.description),
       location: emptyToUndefined(eventForm.location),
+      logoUrl: emptyToUndefined(eventForm.logoUrl),
+      rulesUpdateNotice: emptyToUndefined(eventForm.rulesUpdateNotice),
       startDate: new Date(`${eventForm.startDate}T12:00:00`).toISOString(),
       endDate: eventForm.endDate
         ? new Date(`${eventForm.endDate}T12:00:00`).toISOString()
@@ -406,171 +409,210 @@ export default function AdminDashboardClient({ eventId }: AdminDashboardClientPr
             </div>
           </div>
 
+          {event.rulesUpdateNotice && (
+            <div className="rounded-sm border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <strong>Atualização de regras/sistema:</strong> {event.rulesUpdateNotice}
+            </div>
+          )}
+
           {showEventDetailsPanel && (
-          <Card className="valhalla-panel rounded-sm">
-            <CardHeader className="border-b bg-secondary/70">
-              <div>
+            <Card className="valhalla-panel rounded-sm">
+              <CardHeader className="border-b bg-secondary/70">
                 <div>
-                  <CardTitle>{event.name}</CardTitle>
-                  <CardDescription>
-                    Dados principais do evento usados nas telas administrativas e públicas.
-                  </CardDescription>
+                  <div>
+                    <CardTitle>{event.name}</CardTitle>
+                    <CardDescription>
+                      Dados principais do evento usados nas telas administrativas e públicas.
+                    </CardDescription>
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-6">
-              <form onSubmit={handleEventUpdateSubmit} className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2">
-                  <label htmlFor="eventName" className="text-sm font-medium">
-                    Nome do Evento *
-                  </label>
-                  <input
-                    id="eventName"
-                    className="flex h-9 w-full rounded-sm border border-input bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    value={eventForm.name}
-                    onChange={(e) => handleEventFormChange("name", e.target.value)}
-                    required
-                  />
-                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-6">
+                <form onSubmit={handleEventUpdateSubmit} className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <label htmlFor="eventName" className="text-sm font-medium">
+                      Nome do Evento *
+                    </label>
+                    <input
+                      id="eventName"
+                      className="flex h-9 w-full rounded-sm border border-input bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={eventForm.name}
+                      onChange={(e) => handleEventFormChange("name", e.target.value)}
+                      required
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="eventLocation" className="text-sm font-medium">
-                    Local
-                  </label>
-                  <input
-                    id="eventLocation"
-                    className="flex h-9 w-full rounded-sm border border-input bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    placeholder="Ex: Salvador/BA"
-                    value={eventForm.location}
-                    onChange={(e) => handleEventFormChange("location", e.target.value)}
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <label htmlFor="eventLocation" className="text-sm font-medium">
+                      Local
+                    </label>
+                    <input
+                      id="eventLocation"
+                      className="flex h-9 w-full rounded-sm border border-input bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      placeholder="Ex: Salvador/BA"
+                      value={eventForm.location}
+                      onChange={(e) => handleEventFormChange("location", e.target.value)}
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="eventStartDate" className="text-sm font-medium">
-                    Data inicial *
-                  </label>
-                  <input
-                    id="eventStartDate"
-                    type="date"
-                    className="flex h-9 w-full rounded-sm border border-input bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    value={eventForm.startDate}
-                    onChange={(e) => handleEventFormChange("startDate", e.target.value)}
-                    required
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <label htmlFor="eventStartDate" className="text-sm font-medium">
+                      Data inicial *
+                    </label>
+                    <input
+                      id="eventStartDate"
+                      type="date"
+                      className="flex h-9 w-full rounded-sm border border-input bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={eventForm.startDate}
+                      onChange={(e) => handleEventFormChange("startDate", e.target.value)}
+                      required
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="eventEndDate" className="text-sm font-medium">
-                    Data final
-                  </label>
-                  <input
-                    id="eventEndDate"
-                    type="date"
-                    className="flex h-9 w-full rounded-sm border border-input bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    value={eventForm.endDate}
-                    onChange={(e) => handleEventFormChange("endDate", e.target.value)}
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <label htmlFor="eventEndDate" className="text-sm font-medium">
+                      Data final
+                    </label>
+                    <input
+                      id="eventEndDate"
+                      type="date"
+                      className="flex h-9 w-full rounded-sm border border-input bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={eventForm.endDate}
+                      onChange={(e) => handleEventFormChange("endDate", e.target.value)}
+                    />
+                  </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <label htmlFor="eventDescription" className="text-sm font-medium">
-                    Descrição
-                  </label>
-                  <textarea
-                    id="eventDescription"
-                    className="flex min-h-24 w-full rounded-sm border border-input bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    placeholder="Resumo curto da etapa, sede ou observações públicas."
-                    value={eventForm.description}
-                    onChange={(e) => handleEventFormChange("description", e.target.value)}
-                  />
-                </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label htmlFor="eventDescription" className="text-sm font-medium">
+                      Descrição
+                    </label>
+                    <textarea
+                      id="eventDescription"
+                      className="flex min-h-24 w-full rounded-sm border border-input bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      placeholder="Resumo curto da etapa, sede ou observações públicas."
+                      value={eventForm.description}
+                      onChange={(e) => handleEventFormChange("description", e.target.value)}
+                    />
+                  </div>
 
-                {eventFormError && (
-                  <p className="text-sm text-destructive md:col-span-2">{eventFormError}</p>
-                )}
+                  <div className="space-y-2 md:col-span-2">
+                    <label htmlFor="eventLogoUrl" className="text-sm font-medium">
+                      URL do logo do evento
+                    </label>
+                    <input
+                      id="eventLogoUrl"
+                      type="url"
+                      className="flex h-9 w-full rounded-sm border border-input bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      placeholder="https://…/logo.png"
+                      value={eventForm.logoUrl}
+                      onChange={(e) => handleEventFormChange("logoUrl", e.target.value)}
+                    />
+                  </div>
 
-                <div className="md:col-span-2 flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="rounded-sm"
-                    onClick={() => {
-                      setEventFormError("");
-                      setEventForm({
-                        name: event.name,
-                        description: event.description ?? "",
-                        location: event.location ?? "",
-                        startDate: toDateInputValue(event.startDate),
-                        endDate: event.endDate ? toDateInputValue(event.endDate) : "",
-                      });
-                      setShowEventDetailsPanel(false);
-                    }}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button type="submit" className="rounded-sm" disabled={updateEventMutation.isPending}>
-                    {updateEventMutation.isPending ? "Salvando..." : "Salvar alterações"}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+                  <div className="space-y-2 md:col-span-2">
+                    <label htmlFor="rulesUpdateNotice" className="text-sm font-medium">
+                      Aviso de atualização das regras/plugin
+                    </label>
+                    <textarea
+                      id="rulesUpdateNotice"
+                      className="flex min-h-20 w-full rounded-sm border border-input bg-white px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      placeholder="Ex.: Regras 2026 v1.2 aplicadas em 09/09. Revise as fichas em andamento."
+                      value={eventForm.rulesUpdateNotice}
+                      onChange={(e) => handleEventFormChange("rulesUpdateNotice", e.target.value)}
+                    />
+                  </div>
+
+                  {eventFormError && (
+                    <p className="text-sm text-destructive md:col-span-2">{eventFormError}</p>
+                  )}
+
+                  <div className="md:col-span-2 flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-sm"
+                      onClick={() => {
+                        setEventFormError("");
+                        setEventForm({
+                          name: event.name,
+                          description: event.description ?? "",
+                          location: event.location ?? "",
+                          startDate: toDateInputValue(event.startDate),
+                          endDate: event.endDate ? toDateInputValue(event.endDate) : "",
+                          logoUrl: event.logoUrl ?? "",
+                          rulesUpdateNotice: event.rulesUpdateNotice ?? "",
+                        });
+                        setShowEventDetailsPanel(false);
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="rounded-sm"
+                      disabled={updateEventMutation.isPending}
+                    >
+                      {updateEventMutation.isPending ? "Salvando..." : "Salvar alterações"}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
           )}
 
           {showEventsListPanel && (
-          <Card className="valhalla-panel rounded-sm">
-            <CardHeader className="border-b bg-secondary/70">
-              <CardTitle>Eventos Cadastrados</CardTitle>
-              <CardDescription>
-                Selecione qual evento deve aparecer como ativo nas telas públicas.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-6">
-              {events?.map((listedEvent) => (
-                <div
-                  key={listedEvent.id}
-                  className="rounded-sm border bg-white px-4 py-3 shadow-sm"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium text-foreground">{listedEvent.name}</p>
-                        {listedEvent.id === event.id && (
-                          <Badge variant="secondary" className="rounded-sm">
-                            Evento do painel
-                          </Badge>
-                        )}
-                        {listedEvent.isActive && (
-                          <Badge variant="default" className="rounded-sm">
-                            Ativo
-                          </Badge>
-                        )}
+            <Card className="valhalla-panel rounded-sm">
+              <CardHeader className="border-b bg-secondary/70">
+                <CardTitle>Eventos Cadastrados</CardTitle>
+                <CardDescription>
+                  Selecione qual evento deve aparecer como ativo nas telas públicas.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 pt-6">
+                {events?.map((listedEvent) => (
+                  <div
+                    key={listedEvent.id}
+                    className="rounded-sm border bg-white px-4 py-3 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-foreground">{listedEvent.name}</p>
+                          {listedEvent.id === event.id && (
+                            <Badge variant="secondary" className="rounded-sm">
+                              Evento do painel
+                            </Badge>
+                          )}
+                          {listedEvent.isActive && (
+                            <Badge variant="default" className="rounded-sm">
+                              Ativo
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {formatDateRange(listedEvent.startDate, listedEvent.endDate)}
+                          {listedEvent.location ? ` • ${listedEvent.location}` : ""}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {listedEvent.description || "Sem descrição cadastrada."}
+                        </p>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {formatDateRange(listedEvent.startDate, listedEvent.endDate)}
-                        {listedEvent.location ? ` • ${listedEvent.location}` : ""}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {listedEvent.description || "Sem descrição cadastrada."}
-                      </p>
-                    </div>
 
-                    <Button
-                      type="button"
-                      variant={listedEvent.isActive ? "outline" : "default"}
-                      size="sm"
-                      className="rounded-sm"
-                      disabled={listedEvent.isActive || setActiveEventMutation.isPending}
-                      onClick={() => setActiveEventMutation.mutate(listedEvent.id)}
-                    >
-                      {listedEvent.isActive ? "Evento ativo" : "Definir como ativo"}
-                    </Button>
+                      <Button
+                        type="button"
+                        variant={listedEvent.isActive ? "outline" : "default"}
+                        size="sm"
+                        className="rounded-sm"
+                        disabled={listedEvent.isActive || setActiveEventMutation.isPending}
+                        onClick={() => setActiveEventMutation.mutate(listedEvent.id)}
+                      >
+                        {listedEvent.isActive ? "Evento ativo" : "Definir como ativo"}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+                ))}
+              </CardContent>
+            </Card>
           )}
         </div>
 
