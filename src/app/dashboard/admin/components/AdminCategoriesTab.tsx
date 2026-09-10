@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Badge } from "@/presentation/components/ui/badge";
 import { Button } from "@/presentation/components/ui/button";
 import { Card, CardContent } from "@/presentation/components/ui/card";
@@ -47,7 +48,7 @@ export function AdminCategoriesTab({ categories }: AdminCategoriesTabProps) {
                   </TableCell>
                   <TableCell>
                     <Button variant="outline" size="sm" asChild>
-                      <a href="/view">Ver no telão</a>
+                      <Link href="/view">Ver no telão</Link>
                     </Button>
                   </TableCell>
                 </TableRow>

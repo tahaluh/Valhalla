@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import { formatDateRange } from "@/lib/utils";
@@ -189,9 +190,9 @@ export default function LoginPage() {
 
         <p className="text-center text-sm text-muted-foreground">
           Apenas visualizar?{" "}
-          <a href="/view" className="font-medium text-primary hover:underline">
+          <Link href="/view" className="font-medium text-primary hover:underline">
             Ver ranking público
-          </a>
+          </Link>
         </p>
       </div>
     </div>
