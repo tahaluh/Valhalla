@@ -38,4 +38,12 @@ test("janela operacional destaca aproximação, horário e atraso", () => {
     getSurpriseTiming(scheduledAt, new Date("2026-09-10T12:36:00.000Z")).state,
     "OVERDUE",
   );
+  assert.equal(
+    getSurpriseTiming(scheduledAt, new Date("2026-09-10T12:57:00.000Z"), 2).state,
+    "UPCOMING",
+  );
+  assert.equal(
+    getSurpriseTiming(scheduledAt, new Date("2026-09-10T12:58:00.000Z"), 2).state,
+    "DUE",
+  );
 });

@@ -67,14 +67,14 @@ export function chooseSurpriseChallenge(
   return candidates[Math.floor(random() * candidates.length)]!;
 }
 
-export function getSurpriseTiming(scheduledAt: Date | string, now = new Date()) {
-  const drawAt = new Date(new Date(scheduledAt).getTime() - 30 * 60 * 1000);
+export function getSurpriseTiming(scheduledAt: Date | string, now = new Date(), leadMinutes = 30) {
+  const drawAt = new Date(new Date(scheduledAt).getTime() - leadMinutes * 60 * 1000);
   const deltaMs = drawAt.getTime() - now.getTime();
   return {
     drawAt,
     deltaMs,
     state:
-      deltaMs < 0
+      deltaMs <= 0
         ? deltaMs < -5 * 60 * 1000
           ? "OVERDUE"
           : "DUE"

@@ -34,6 +34,8 @@ model Event {
   secretariatPassword       String // bcrypt hash
   surpriseChallenge         Boolean   @default(false)
   surpriseChallengeBank     String    @default("[]") // JSON: bancos LEVEL1 e LEVEL2 (legado: array)
+  surpriseLeadMinutes       Int       @default(30) // antecedência do sorteio em relação à rodada
+  surpriseWindowOpen        Boolean   @default(false) // abertura manual pelo admin; horário é apenas referência
   publicRankingMode         String    @default("LIVE") // LIVE | MANUAL
   publicRankingPublishedAt  DateTime?
   resultsStatus             String    @default("PROVISIONAL") // PROVISIONAL | HOMOLOGATED

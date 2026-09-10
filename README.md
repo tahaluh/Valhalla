@@ -53,6 +53,7 @@ Se o tablet perder temporariamente a conexão com o servidor local, chamadas, pa
 - Categorias possuem nível OBR explícito, sem depender do texto do nome para escolher as regras ou os desafios.
 - Banco oficial do plugin Tournamenter OBR 2026.1.5, com 15 desafios de Nível 1 e 30 de Nível 2, editável e sujeito à aprovação da organização.
 - Mesa de desafio com fila, juiz responsável, alerta de aproximação/atraso, geração individual por equipe, opção auditada de gerar novamente, recusa, ausência, desistência, execução e conclusão.
+- Horário de referência configurável para o desafio: 30 minutos por padrão e atalhos de 1, 2, 5 ou 15 minutos para simulações. Ele não cria bloqueios automáticos; o admin abre e fecha manualmente a janela de sorteios.
 - Proteção contra repetição do mesmo desafio entre a segunda e a terceira rodada enquanto existir outra opção.
 - Painel administrativo consolidado com situação de cada equipe, rodada, nível, horário, juiz e tablet.
 - Ficha oficial em PDF registra o texto sorteado, horário, situação final, elegibilidade, juiz e tablet do sorteio.

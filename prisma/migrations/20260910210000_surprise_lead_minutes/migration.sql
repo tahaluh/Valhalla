@@ -1,0 +1,2 @@
+ALTER TABLE "events" ADD COLUMN "surpriseLeadMinutes" INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE "events" ADD COLUMN "surpriseWindowOpen" BOOLEAN NOT NULL DEFAULT false;

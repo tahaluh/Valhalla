@@ -166,6 +166,14 @@ test("API tRPC percorre abertura, chamada, rascunho e início em banco real", as
       }),
     ),
   );
+  await assert.rejects(
+    referee.operation.drawSurpriseChallenge({
+      slotId: challengeSlots[0]!.id,
+      operatorName: "Juiz do desafio",
+    }),
+    /entrega dos desafios está fechada/,
+  );
+  await caller.event.update({ id: event.id, surpriseWindowOpen: true });
   const firstDraw = await referee.operation.drawSurpriseChallenge({
     slotId: challengeSlots[0]!.id,
     operatorName: "Juiz do desafio",

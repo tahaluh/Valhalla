@@ -144,7 +144,7 @@ function isConnectionFailure(error: unknown) {
 export default function RefereeDashboardClient({ eventId }: { eventId: string }) {
   const router = useRouter();
   const utils = trpc.useUtils();
-  const { data: event } = trpc.event.getById.useQuery(eventId);
+  const { data: event } = trpc.event.getById.useQuery(eventId, { refetchInterval: 5000 });
   const { data: stations = [] } = trpc.operation.listStations.useQuery(eventId);
   const { data: referees = [] } = trpc.operation.listReferees.useQuery(eventId);
   const { data: phases = [] } = trpc.operation.listPhases.useQuery(eventId);
@@ -205,7 +205,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
   });
   const surpriseOfflineKit = trpc.operation.surpriseOfflineKit.useQuery(eventId, {
     enabled: selectedStation?.type === "CHALLENGE_TABLE",
-    staleTime: Infinity,
+    refetchInterval: 5000,
   });
   const selectedPhase = phases.find((item) => item.id === phaseId);
   const availablePhases = phases.filter(
@@ -694,7 +694,15 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     slot: NonNullable<typeof surpriseQueueQuery.data>[number],
     regenerate = false,
   ) {
+    if (!event?.surpriseWindowOpen) {
+      setMessage("A entrega dos desafios está fechada. Solicite a abertura ao admin.");
+      return;
+    }
     if (!navigator.onLine) {
+      if (surpriseOfflineKit.data?.windowOpen !== true) {
+        setMessage("Não há confirmação local de que a entrega está aberta.");
+        return;
+      }
       queueOfflineSurpriseDraw(slot, regenerate);
       return;
     }
@@ -1023,13 +1031,17 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     setDraftStatus("idle");
   }
 
-  const surpriseAttentionCount = (surpriseQueueQuery.data ?? []).filter((slot) => {
-    const status: string =
-      localSurprise[slot.id]?.status ?? slot.session?.surpriseStatus ?? "PENDING";
-    return (
-      status === "PENDING" && getSurpriseTiming(slot.scheduledAt, new Date(now)).state !== "WAITING"
-    );
-  }).length;
+  const surpriseAttentionCount = event?.surpriseWindowOpen
+    ? (surpriseQueueQuery.data ?? []).filter((slot) => {
+        const status: string =
+          localSurprise[slot.id]?.status ?? slot.session?.surpriseStatus ?? "PENDING";
+        return (
+          status === "PENDING" &&
+          getSurpriseTiming(slot.scheduledAt, new Date(now), event?.surpriseLeadMinutes ?? 30)
+            .state !== "WAITING"
+        );
+      }).length
+    : 0;
 
   return (
     <div className="valhalla-shell min-h-screen pb-12">
@@ -1281,8 +1293,9 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                 <p className="text-sm font-bold text-[#164c78]">MESA DE DESAFIO</p>
                 <CardTitle>Sorteio do desafio surpresa</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Geração individual por equipe, 30 minutos antes da 2ª e 3ª rodadas. Se for preciso
-                  gerar novamente, a substituição também fica salva no histórico.
+                  Geração individual por equipe, com antecedência configurada pelo admin antes da 2ª
+                  e 3ª rodadas. Se for preciso gerar novamente, a substituição também fica salva no
+                  histórico.
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1305,6 +1318,18 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                 </Button>
               </CardContent>
             </Card>
+
+            <div
+              className={`rounded-xl border-2 p-4 text-center font-bold ${
+                event?.surpriseWindowOpen
+                  ? "border-green-500 bg-green-50 text-green-900"
+                  : "border-red-400 bg-red-50 text-red-900"
+              }`}
+            >
+              {event?.surpriseWindowOpen
+                ? "● Entrega aberta pelo admin"
+                : "Entrega fechada — aguarde o admin abrir"}
+            </div>
 
             {newOfficialRole === "operator" && (
               <Card className="border-amber-300 bg-amber-50">
@@ -1375,7 +1400,11 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                   const local = localSurprise[slot.id];
                   const status: string = local?.status ?? slot.session?.surpriseStatus ?? "PENDING";
                   const locked = status !== "PENDING";
-                  const timing = getSurpriseTiming(slot.scheduledAt, new Date(now));
+                  const timing = getSurpriseTiming(
+                    slot.scheduledAt,
+                    new Date(now),
+                    event?.surpriseLeadMinutes ?? 30,
+                  );
                   const drawAt = timing.drawAt;
                   const challengeText = local?.challengeText ?? slot.session?.surpriseChallengeText;
                   return (
@@ -1434,7 +1463,11 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           <Button
                             className="h-12 bg-[#164c78] font-bold text-white hover:bg-[#153c67]"
-                            disabled={!officialsConfirmed || drawSurprise.isPending}
+                            disabled={
+                              !officialsConfirmed ||
+                              !event?.surpriseWindowOpen ||
+                              drawSurprise.isPending
+                            }
                             onClick={() =>
                               confirm(
                                 `Gerar outro desafio somente para ${slot.team.name}? O desafio atual será substituído e a troca ficará no histórico.`,
@@ -1461,7 +1494,11 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                         <div className="mt-3 grid gap-2 sm:grid-cols-3">
                           <Button
                             className="h-12 bg-[#8dbf45] font-bold text-[#123b63] hover:bg-[#a5d060]"
-                            disabled={!officialsConfirmed || drawSurprise.isPending}
+                            disabled={
+                              !officialsConfirmed ||
+                              !event?.surpriseWindowOpen ||
+                              drawSurprise.isPending
+                            }
                             onClick={() =>
                               confirm(`Gerar agora o desafio individual de ${slot.team.name}?`) &&
                               void handleSurpriseDraw(slot)

@@ -297,6 +297,8 @@ export const robustnessRouter = router({
         isActive: backup.event.isActive,
         surpriseChallenge: backup.event.surpriseChallenge,
         surpriseChallengeBank: backup.event.surpriseChallengeBank ?? "[]",
+        surpriseLeadMinutes: backup.event.surpriseLeadMinutes ?? 30,
+        surpriseWindowOpen: backup.event.surpriseWindowOpen ?? false,
         publicRankingMode: backup.event.publicRankingMode,
         publicRankingPublishedAt: backup.event.publicRankingPublishedAt,
         resultsStatus: backup.event.resultsStatus,

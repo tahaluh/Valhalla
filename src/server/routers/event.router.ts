@@ -32,6 +32,8 @@ const updateEventSchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   surpriseChallenge: z.boolean().optional(),
+  surpriseLeadMinutes: z.number().int().min(0).optional(),
+  surpriseWindowOpen: z.boolean().optional(),
   logoUrl: z.string().url().max(2000).optional().or(z.literal("")),
   rulesUpdateNotice: z.string().max(2000).optional(),
 });
@@ -272,6 +274,8 @@ export const eventRouter = router({
         endDate: true,
         isActive: true,
         surpriseChallenge: true,
+        surpriseLeadMinutes: true,
+        surpriseWindowOpen: true,
         publicRankingMode: true,
         publicRankingPublishedAt: true,
         resultsStatus: true,
@@ -348,7 +352,12 @@ export const eventRouter = router({
     await ctx.prisma.auditLog.create({
       data: {
         eventId: id,
-        action: "EVENT_UPDATED",
+        action:
+          data.surpriseWindowOpen === undefined
+            ? "EVENT_UPDATED"
+            : data.surpriseWindowOpen
+              ? "SURPRISE_WINDOW_OPENED"
+              : "SURPRISE_WINDOW_CLOSED",
         entityType: "Event",
         entityId: id,
         actorRole: ctx.user.role,
@@ -359,6 +368,8 @@ export const eventRouter = router({
           startDate: before.startDate,
           endDate: before.endDate,
           surpriseChallenge: before.surpriseChallenge,
+          surpriseLeadMinutes: before.surpriseLeadMinutes,
+          surpriseWindowOpen: before.surpriseWindowOpen,
         }),
         after: JSON.stringify(data),
       },

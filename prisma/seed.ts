@@ -85,6 +85,8 @@ async function main() {
       secretariatPassword: passwordHash,
       surpriseChallenge: true,
       surpriseChallengeBank: JSON.stringify(TOURNAMENTER_OBR_2026_SURPRISE_CHALLENGES),
+      surpriseLeadMinutes: 30,
+      surpriseWindowOpen: false,
       rulesUpdateNotice: "Ambiente demonstrativo configurado para as regras presenciais OBR 2026.",
       publicRankingMode: "LIVE",
       resultsStatus: "PROVISIONAL",

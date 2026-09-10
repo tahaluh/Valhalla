@@ -908,10 +908,14 @@ export const operationRouter = router({
     assertSessionEvent(ctx.user, eventId);
     const event = await ctx.prisma.event.findUnique({
       where: { id: eventId },
-      select: { surpriseChallengeBank: true, updatedAt: true },
+      select: { surpriseChallengeBank: true, surpriseWindowOpen: true, updatedAt: true },
     });
     if (!event) throw new Error("Evento não encontrado.");
-    return { banks: parseChallengeBanks(event.surpriseChallengeBank), version: event.updatedAt };
+    return {
+      banks: parseChallengeBanks(event.surpriseChallengeBank),
+      windowOpen: event.surpriseWindowOpen,
+      version: event.updatedAt,
+    };
   }),
   surpriseQueue: refereeProcedure.input(z.string()).query(async ({ ctx, input: eventId }) => {
     assertSessionEvent(ctx.user, eventId);
@@ -947,6 +951,8 @@ export const operationRouter = router({
       if (!slot) throw new Error("Rodada não encontrada.");
       assertSessionEvent(ctx.user, slot.eventId);
       if (!slot.event.surpriseChallenge) throw new Error("O desafio surpresa está desativado.");
+      if (!slot.event.surpriseWindowOpen)
+        throw new Error("A entrega dos desafios está fechada. Solicite a abertura ao admin.");
       if (slot.session?.surpriseDrawnAt && !input.regenerate)
         throw new Error("Esta equipe já realizou o sorteio para esta rodada.");
       if (

@@ -85,6 +85,9 @@ export function AdminOperationsTab({
   const saveSurpriseBank = trpc.operation.setSurpriseChallengeBank.useMutation({
     onSuccess: () => utils.operation.getSurpriseChallengeBank.invalidate(eventId),
   });
+  const updateEvent = trpc.event.update.useMutation({
+    onSuccess: () => utils.event.getById.invalidate(eventId),
+  });
   const [refereeName, setRefereeName] = useState("");
   const [station, setStation] = useState({
     name: "",
@@ -115,6 +118,7 @@ export function AdminOperationsTab({
     LEVEL1: [""],
     LEVEL2: [""],
   });
+  const [surpriseLeadMinutes, setSurpriseLeadMinutes] = useState(30);
   const [advanced, setAdvanced] = useState({
     categoryId: "",
     intervalMinutes: 10,
@@ -175,6 +179,9 @@ export function AdminOperationsTab({
       LEVEL2: savedSurpriseBank.LEVEL2.length ? savedSurpriseBank.LEVEL2 : [""],
     });
   }, [savedSurpriseBank]);
+  useEffect(() => {
+    if (event) setSurpriseLeadMinutes(event.surpriseLeadMinutes);
+  }, [event]);
 
   return (
     <div className="space-y-6">
@@ -461,6 +468,94 @@ export function AdminOperationsTab({
             <CardTitle>Desafios surpresa</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div
+              className={`rounded-xl border-2 p-4 ${
+                event.surpriseWindowOpen
+                  ? "border-green-500 bg-green-50"
+                  : "border-slate-300 bg-slate-50"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-[#153c67]">
+                    Entrega {event.surpriseWindowOpen ? "aberta" : "fechada"}
+                  </h3>
+                  <p className="text-sm text-slate-700">
+                    O admin controla a liberação. A previsão de 30 minutos não bloqueia nem abre
+                    automaticamente os sorteios.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  className={
+                    event.surpriseWindowOpen
+                      ? "bg-red-700 text-white hover:bg-red-800"
+                      : "bg-green-700 text-white hover:bg-green-800"
+                  }
+                  disabled={updateEvent.isPending}
+                  onClick={() => {
+                    const nextOpen = !event.surpriseWindowOpen;
+                    if (
+                      confirm(
+                        nextOpen
+                          ? "Abrir agora a entrega dos desafios surpresa?"
+                          : "Fechar agora a entrega? Novos sorteios ficarão bloqueados.",
+                      )
+                    )
+                      updateEvent.mutate({ id: eventId, surpriseWindowOpen: nextOpen });
+                  }}
+                >
+                  {updateEvent.isPending
+                    ? "Salvando..."
+                    : event.surpriseWindowOpen
+                      ? "Fechar entrega"
+                      : "Abrir entrega"}
+                </Button>
+              </div>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <h3 className="font-bold text-[#153c67]">Horário de referência</h3>
+              <p className="mb-3 text-sm text-blue-950">
+                O padrão é avisar 30 minutos antes. Esse valor só calcula os alertas; a abertura e o
+                fechamento acima são sempre manuais.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="space-y-1 text-sm font-semibold">
+                  Minutos antes da rodada
+                  <input
+                    type="number"
+                    min={0}
+                    className="block h-10 w-36 rounded-md border bg-white px-3"
+                    value={surpriseLeadMinutes}
+                    onChange={(event) =>
+                      setSurpriseLeadMinutes(Math.max(0, Number(event.target.value) || 0))
+                    }
+                  />
+                </label>
+                {[1, 2, 5, 15, 30].map((minutes) => (
+                  <Button
+                    key={minutes}
+                    type="button"
+                    variant={surpriseLeadMinutes === minutes ? "default" : "outline"}
+                    onClick={() => setSurpriseLeadMinutes(minutes)}
+                  >
+                    {minutes} min
+                  </Button>
+                ))}
+                <Button
+                  type="button"
+                  disabled={updateEvent.isPending}
+                  onClick={() => updateEvent.mutate({ id: eventId, surpriseLeadMinutes })}
+                >
+                  {updateEvent.isPending ? "Salvando..." : "Salvar referência"}
+                </Button>
+              </div>
+              {updateEvent.isSuccess && (
+                <p className="mt-2 text-sm font-semibold text-green-700">
+                  Antecedência atualizada para {event?.surpriseLeadMinutes} minuto(s).
+                </p>
+              )}
+            </div>
             <div className="rounded-xl border bg-white p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -508,7 +603,8 @@ export function AdminOperationsTab({
                     {surpriseOverview.map((slot) => {
                       const status = slot.session?.surpriseStatus ?? "PENDING";
                       const drawAt = new Date(
-                        new Date(slot.scheduledAt).getTime() - 30 * 60 * 1000,
+                        new Date(slot.scheduledAt).getTime() -
+                          (event?.surpriseLeadMinutes ?? 30) * 60 * 1000,
                       );
                       return (
                         <tr key={slot.id} className="border-t even:bg-slate-50">

@@ -116,6 +116,8 @@ export async function validateEventRules(eventId: string, database: PrismaClient
   const snapshot = JSON.stringify({
     surpriseChallenge: event.surpriseChallenge,
     surpriseChallengeBank: event.surpriseChallengeBank,
+    surpriseLeadMinutes: event.surpriseLeadMinutes,
+    surpriseWindowOpen: event.surpriseWindowOpen,
     categories: categories.map((category) => ({
       id: category.id,
       type: category.type,

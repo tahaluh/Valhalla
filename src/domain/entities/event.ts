@@ -12,6 +12,8 @@ export interface Event {
   refereePassword: string;
   secretariatPassword: string;
   surpriseChallenge: boolean;
+  surpriseLeadMinutes: number;
+  surpriseWindowOpen: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
