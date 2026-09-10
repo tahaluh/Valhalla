@@ -14,7 +14,7 @@ O Valhalla funciona em um servidor na rede local, permitindo que administração
 - Notas individuais por jurado e confirmação explícita da ficha de consenso.
 - Rulesets, colunas de pontuação e fórmulas configuráveis.
 - Agenda com rodízio entre arenas, períodos indisponíveis e detecção de conflitos.
-- Rascunho persistente, recuperação entre tablets, fila local de ações durante quedas de rede e comparação de versões concorrentes.
+- Rascunho persistente, recuperação entre tablets, fila local de ações — inclusive sorteio surpresa — durante quedas de rede e comparação de versões concorrentes.
 - Correções administrativas justificadas e histórico completo das alterações.
 - Ranking animado e telões configuráveis para horários, chamadas, avisos, imagens e mesas.
 - Importação e sincronização manual ou automática com o Olímpo.
@@ -39,7 +39,7 @@ O tablet não fica permanentemente preso a uma mesa ou pessoa. Operador, anuncia
 
 Cronômetros e rascunhos são persistidos no servidor. Recarregar a página ou assumir a sessão em outro tablet não apaga a ficha. Se dois aparelhos alterarem a mesma avaliação, o sistema informa o conflito e permite comparar e recuperar as versões.
 
-Se o tablet perder temporariamente a conexão com o servidor local, chamadas, pausas, reagendamentos, ausências e finalizações são preservados no aparelho, na ordem em que ocorreram. A fila é reenviada automaticamente após a reconexão e também pode ser disparada manualmente pelo árbitro.
+Se o tablet perder temporariamente a conexão com o servidor local, chamadas, pausas, reagendamentos, ausências, sorteios surpresa e finalizações são preservados no aparelho, na ordem em que ocorreram. O banco de desafios aprovado fica armazenado no tablet para que a equipe receba o desafio mesmo durante a queda. A fila é reenviada automaticamente após a reconexão e também pode ser disparada manualmente pelo árbitro; conflitos entre tablets interrompem o envio para revisão.
 
 ### Resgate — Prática 2026
 
@@ -50,8 +50,12 @@ Se o tablet perder temporariamente a conexão com o servidor local, chamadas, pa
 - Registro de checkpoint alcançado, não alcançado ou abandonado.
 - Tentativas adicionais: da quarta em diante o checkpoint não pontua ladrilhos, mas as falhas continuam contando para o bônus de saída.
 - Encerramento por **Fim da rodada / desistência**, com tempo máximo aplicado ao desempate.
-- Desafios surpresa separados por Nível 1 e Nível 2, com sorteio, elegibilidade, execução e conclusão.
+- Categorias possuem nível OBR explícito, sem depender do texto do nome para escolher as regras ou os desafios.
+- Banco oficial do plugin Tournamenter OBR 2026.1.5, com 15 desafios de Nível 1 e 30 de Nível 2, editável e sujeito à aprovação da organização.
+- Mesa de desafio com fila, juiz responsável, alerta de aproximação/atraso, sorteio único, recusa, ausência, desistência, execução e conclusão.
 - Proteção contra repetição do mesmo desafio entre a segunda e a terceira rodada enquanto existir outra opção.
+- Painel administrativo consolidado com situação de cada equipe, rodada, nível, horário, juiz e tablet.
+- Ficha oficial em PDF registra o texto sorteado, horário, situação final, elegibilidade, juiz e tablet do sorteio.
 - Verificação da pontuação máxima teórica das arenas antes de gerar a agenda avançada.
 
 ### Artística 2026
@@ -256,7 +260,7 @@ npm run lint
 npm run build
 ```
 
-A suíte automatizada cobre autenticação, regras de pontuação, duas melhores rodadas, desempates, consenso e normalização artística, penalidades acumuladas, estados de fase, autorização administrativa, concorrência, fila offline, lotes de publicação, tentativas adicionais, equivalência e rodízio das arenas, pausas, conflitos de horário e payload do Olímpo. Os testes de integração criam um SQLite temporário, aplicam as migrações e percorrem a API tRPC; o Playwright valida o telão e o login administrativo em Chromium desktop e tablet. O workflow de qualidade executa essas verificações em cada push e pull request.
+A suíte automatizada cobre autenticação, regras de pontuação, duas melhores rodadas, desempates, consenso e normalização artística, penalidades acumuladas, estados de fase, autorização administrativa, concorrência, fila offline, banco e ciclo do desafio surpresa, lotes de publicação, tentativas adicionais, equivalência e rodízio das arenas, pausas, conflitos de horário e payload do Olímpo. Os testes de integração criam um SQLite temporário, aplicam as migrações e percorrem a API tRPC; o Playwright valida o telão e o login administrativo em Chromium desktop e tablet. O workflow de qualidade executa essas verificações em cada push e pull request.
 
 ## Arquitetura
 

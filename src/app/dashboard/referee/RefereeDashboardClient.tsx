@@ -25,6 +25,11 @@ import {
   updateOfflineCommandPayload,
   type OfflineCommand,
 } from "@/lib/offline-queue";
+import {
+  chooseSurpriseChallenge,
+  getSurpriseTiming,
+  type SurpriseChallengeLevel,
+} from "@/domain/entities/surprise-challenge";
 
 const EMPTY_CARD: RescueScorecard = {
   startTile: false,
@@ -110,6 +115,23 @@ type FinalizePayload = {
   };
   transition: Omit<TransitionPayload, "expectedVersion">;
 };
+type SurpriseDrawPayload = {
+  slotId: string;
+  terminalId?: string;
+  operatorName: string;
+  requestedChallenge?: string;
+  offlineDrawnAt?: string;
+};
+type SurpriseDecisionPayload = {
+  slotId: string;
+  status: "DECLINED" | "MISSED";
+  terminalId?: string;
+  operatorName: string;
+};
+type LocalSurpriseState = {
+  challengeText?: string;
+  status: "DRAWN" | "DECLINED" | "MISSED";
+};
 
 function isConnectionFailure(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -161,6 +183,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
   );
   const [offlineRetry, setOfflineRetry] = useState(0);
   const [offlineCommands, setOfflineCommands] = useState<OfflineCommand[]>([]);
+  const [localSurprise, setLocalSurprise] = useState<Record<string, LocalSurpriseState>>({});
   const [flushingOffline, setFlushingOffline] = useState(false);
   const flushingOfflineRef = useRef(false);
   const [selectedJudge, setSelectedJudge] = useState("");
@@ -178,6 +201,10 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
   const surpriseQueueQuery = trpc.operation.surpriseQueue.useQuery(eventId, {
     enabled: selectedStation?.type === "CHALLENGE_TABLE",
     refetchInterval: 5000,
+  });
+  const surpriseOfflineKit = trpc.operation.surpriseOfflineKit.useQuery(eventId, {
+    enabled: selectedStation?.type === "CHALLENGE_TABLE",
+    staleTime: Infinity,
   });
   const selectedPhase = phases.find((item) => item.id === phaseId);
   const availablePhases = phases.filter(
@@ -289,6 +316,14 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       await transition.mutateAsync(command.payload as TransitionPayload);
       return;
     }
+    if (command.kind === "DRAW_SURPRISE") {
+      await drawSurprise.mutateAsync(command.payload as SurpriseDrawPayload);
+      return;
+    }
+    if (command.kind === "DECIDE_SURPRISE") {
+      await decideSurprise.mutateAsync(command.payload as SurpriseDecisionPayload);
+      return;
+    }
     const payload = command.payload as FinalizePayload;
     if (!payload.stage || payload.stage === "SAVE") {
       const session = await saveCard.mutateAsync(payload.save);
@@ -320,6 +355,13 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
             (item) => item.eventId === eventId,
           ),
         );
+        const slotId = (command.payload as { slotId?: string }).slotId;
+        if (slotId)
+          setLocalSurprise((current) => {
+            const next = { ...current };
+            delete next[slotId];
+            return next;
+          });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         setOfflineCommands(
@@ -357,7 +399,32 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       // Preferências inválidas não impedem uma nova configuração do tablet.
     }
     setOfflineCommands(readOfflineCommands(window.localStorage, eventId));
+    const pendingSurprise: Record<string, LocalSurpriseState> = {};
+    for (const command of readOfflineCommands(window.localStorage, eventId)) {
+      if (command.kind === "DRAW_SURPRISE") {
+        const payload = command.payload as SurpriseDrawPayload;
+        pendingSurprise[payload.slotId] = {
+          status: "DRAWN",
+          challengeText: payload.requestedChallenge,
+        };
+      }
+      if (command.kind === "DECIDE_SURPRISE") {
+        const payload = command.payload as SurpriseDecisionPayload;
+        pendingSurprise[payload.slotId] = {
+          ...pendingSurprise[payload.slotId],
+          status: payload.status,
+        };
+      }
+    }
+    setLocalSurprise(pendingSurprise);
   }, [eventId]);
+  useEffect(() => {
+    if (!surpriseOfflineKit.data) return;
+    window.localStorage.setItem(
+      `valhalla-surprise-kit:${eventId}`,
+      JSON.stringify(surpriseOfflineKit.data),
+    );
+  }, [eventId, surpriseOfflineKit.data]);
   useEffect(() => {
     const flush = () => void flushOfflineCommands();
     window.addEventListener("online", flush);
@@ -576,6 +643,78 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       setMessage("Mesa de desafio pronta para os sorteios.");
     } catch {
       // A mensagem da mutation já informa o problema.
+    }
+  }
+  function readCachedSurpriseBanks() {
+    if (surpriseOfflineKit.data?.banks) return surpriseOfflineKit.data.banks;
+    try {
+      const cached = JSON.parse(
+        window.localStorage.getItem(`valhalla-surprise-kit:${eventId}`) ?? "{}",
+      ) as { banks?: Record<SurpriseChallengeLevel, string[]> };
+      return cached.banks;
+    } catch {
+      return undefined;
+    }
+  }
+  function queueOfflineSurpriseDraw(slot: NonNullable<typeof surpriseQueueQuery.data>[number]) {
+    const level = slot.team.category.competitionLevel as SurpriseChallengeLevel;
+    const banks = readCachedSurpriseBanks();
+    if (!banks || !["LEVEL1", "LEVEL2"].includes(level) || !banks[level]?.length) {
+      setMessage(
+        "Sem conexão e sem banco local deste nível. Reconecte este tablet uma vez antes de operar offline.",
+      );
+      return;
+    }
+    const previous = (surpriseQueueQuery.data ?? [])
+      .filter((item) => item.teamId === slot.teamId)
+      .map((item) => localSurprise[item.id]?.challengeText ?? item.session?.surpriseChallengeText);
+    const challenge = chooseSurpriseChallenge(banks[level], previous);
+    const payload: SurpriseDrawPayload = {
+      slotId: slot.id,
+      terminalId,
+      operatorName,
+      requestedChallenge: challenge,
+      offlineDrawnAt: new Date().toISOString(),
+    };
+    queueOfflineCommand("DRAW_SURPRISE", payload);
+    setLocalSurprise((current) => ({
+      ...current,
+      [slot.id]: { status: "DRAWN", challengeText: challenge },
+    }));
+    setMessage("Sorteio salvo neste tablet. Será sincronizado automaticamente ao reconectar.");
+  }
+  async function handleSurpriseDraw(slot: NonNullable<typeof surpriseQueueQuery.data>[number]) {
+    if (!navigator.onLine) {
+      queueOfflineSurpriseDraw(slot);
+      return;
+    }
+    try {
+      await drawSurprise.mutateAsync({ slotId: slot.id, terminalId, operatorName });
+    } catch (error) {
+      if (isConnectionFailure(error)) queueOfflineSurpriseDraw(slot);
+    }
+  }
+  async function handleSurpriseDecision(slotId: string, status: "DECLINED" | "MISSED") {
+    const payload: SurpriseDecisionPayload = { slotId, status, terminalId, operatorName };
+    if (!navigator.onLine) {
+      queueOfflineCommand("DECIDE_SURPRISE", payload);
+      setLocalSurprise((current) => ({
+        ...current,
+        [slotId]: { ...current[slotId], status },
+      }));
+      setMessage("Decisão salva neste tablet. Será sincronizada quando a conexão voltar.");
+      return;
+    }
+    try {
+      await decideSurprise.mutateAsync(payload);
+    } catch (error) {
+      if (!isConnectionFailure(error)) return;
+      queueOfflineCommand("DECIDE_SURPRISE", payload);
+      setLocalSurprise((current) => ({
+        ...current,
+        [slotId]: { ...current[slotId], status },
+      }));
+      setMessage("Decisão salva neste tablet. Será sincronizada quando a conexão voltar.");
     }
   }
   async function executePendingAction() {
@@ -873,6 +1012,14 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     setDraftConflict(null);
     setDraftStatus("idle");
   }
+
+  const surpriseAttentionCount = (surpriseQueueQuery.data ?? []).filter((slot) => {
+    const status: string =
+      localSurprise[slot.id]?.status ?? slot.session?.surpriseStatus ?? "PENDING";
+    return (
+      status === "PENDING" && getSurpriseTiming(slot.scheduledAt, new Date(now)).state !== "WAITING"
+    );
+  }).length;
 
   return (
     <div className="valhalla-shell min-h-screen pb-12">
@@ -1203,16 +1350,37 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
 
             <Card>
               <CardHeader>
-                <CardTitle>Equipes aguardadas</CardTitle>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle>Equipes aguardadas</CardTitle>
+                  {surpriseAttentionCount > 0 && (
+                    <Badge className="animate-pulse bg-red-600 text-white">
+                      {surpriseAttentionCount} sorteio(s) exigem atenção
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {surpriseQueueQuery.isLoading && <p>Carregando equipes...</p>}
                 {(surpriseQueueQuery.data ?? []).map((slot) => {
-                  const status = slot.session?.surpriseStatus ?? "PENDING";
+                  const local = localSurprise[slot.id];
+                  const status: string = local?.status ?? slot.session?.surpriseStatus ?? "PENDING";
                   const locked = status !== "PENDING";
-                  const drawAt = new Date(new Date(slot.scheduledAt).getTime() - 30 * 60 * 1000);
+                  const timing = getSurpriseTiming(slot.scheduledAt, new Date(now));
+                  const drawAt = timing.drawAt;
+                  const challengeText = local?.challengeText ?? slot.session?.surpriseChallengeText;
                   return (
-                    <div key={slot.id} className="rounded-xl border bg-white p-4">
+                    <div
+                      key={slot.id}
+                      className={`rounded-xl border p-4 ${
+                        status === "PENDING" && timing.state === "OVERDUE"
+                          ? "border-red-500 bg-red-50 shadow-md"
+                          : status === "PENDING" && timing.state === "DUE"
+                            ? "border-orange-400 bg-orange-50"
+                            : status === "PENDING" && timing.state === "UPCOMING"
+                              ? "border-amber-300 bg-amber-50"
+                              : "bg-white"
+                      }`}
+                    >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <strong className="text-lg text-[#153c67]">{slot.team.name}</strong>
@@ -1230,19 +1398,26 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                               minute: "2-digit",
                             })}
                           </p>
+                          {status === "PENDING" && timing.state !== "WAITING" && (
+                            <p className="mt-1 font-bold text-red-700">
+                              {timing.state === "OVERDUE"
+                                ? "⚠ Sorteio atrasado"
+                                : timing.state === "DUE"
+                                  ? "● Sortear agora"
+                                  : `Sorteio em ${Math.max(1, Math.ceil(timing.deltaMs / 60000))} min`}
+                            </p>
+                          )}
                         </div>
                         <Badge variant={status === "DRAWN" ? "default" : "secondary"}>
                           {surpriseStatusLabel(status)}
                         </Badge>
                       </div>
-                      {slot.session?.surpriseChallengeText && (
+                      {challengeText && (
                         <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-blue-950">
                           <p className="text-xs font-bold uppercase tracking-wide">
                             Desafio sorteado
                           </p>
-                          <p className="mt-1 whitespace-pre-wrap font-semibold">
-                            {slot.session.surpriseChallengeText}
-                          </p>
+                          <p className="mt-1 whitespace-pre-wrap font-semibold">{challengeText}</p>
                         </div>
                       )}
                       {status === "DRAWN" && (
@@ -1253,13 +1428,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                           onClick={() =>
                             confirm(
                               `Registrar que ${slot.team.name} desistiu de executar o desafio já sorteado?`,
-                            ) &&
-                            decideSurprise.mutate({
-                              slotId: slot.id,
-                              status: "DECLINED",
-                              terminalId,
-                              operatorName,
-                            })
+                            ) && void handleSurpriseDecision(slot.id, "DECLINED")
                           }
                         >
                           Registrar desistência após sorteio
@@ -1273,12 +1442,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                             onClick={() =>
                               confirm(
                                 `Sortear agora o desafio de ${slot.team.name}? O sorteio não poderá ser repetido.`,
-                              ) &&
-                              drawSurprise.mutate({
-                                slotId: slot.id,
-                                terminalId,
-                                operatorName,
-                              })
+                              ) && void handleSurpriseDraw(slot)
                             }
                           >
                             🎲 Sortear e salvar
@@ -1288,12 +1452,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                             disabled={!officialsConfirmed || decideSurprise.isPending}
                             onClick={() =>
                               confirm(`Registrar que ${slot.team.name} recusou o desafio?`) &&
-                              decideSurprise.mutate({
-                                slotId: slot.id,
-                                status: "DECLINED",
-                                terminalId,
-                                operatorName,
-                              })
+                              void handleSurpriseDecision(slot.id, "DECLINED")
                             }
                           >
                             Equipe recusou
@@ -1305,13 +1464,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                             onClick={() =>
                               confirm(
                                 `Registrar que ${slot.team.name} não compareceu ao sorteio?`,
-                              ) &&
-                              decideSurprise.mutate({
-                                slotId: slot.id,
-                                status: "MISSED",
-                                terminalId,
-                                operatorName,
-                              })
+                              ) && void handleSurpriseDecision(slot.id, "MISSED")
                             }
                           >
                             Não compareceu

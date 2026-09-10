@@ -6,6 +6,7 @@ import { getCategoryPreset } from "@/domain/entities/category";
 const createCategorySchema = z.object({
   name: z.string().min(1).max(200),
   type: z.enum(["RESCUE", "ARTISTIC"]),
+  competitionLevel: z.enum(["NONE", "LEVEL1", "LEVEL2"]).default("NONE"),
   eventId: z.string().min(1),
   applyPreset: z.boolean().default(true),
 });
@@ -14,6 +15,7 @@ const updateCategorySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(200).optional(),
   scoringFormula: z.string().optional(),
+  competitionLevel: z.enum(["NONE", "LEVEL1", "LEVEL2"]).optional(),
 });
 
 const createColumnSchema = z.object({
@@ -60,6 +62,7 @@ export const categoryRouter = router({
       data: {
         name: input.name,
         type: input.type,
+        competitionLevel: input.competitionLevel,
         scoringFormula: preset.scoringFormula,
         order: 999,
         eventId: input.eventId,

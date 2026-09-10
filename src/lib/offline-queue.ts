@@ -1,7 +1,7 @@
 export type OfflineCommand<T = unknown> = {
   id: string;
   eventId: string;
-  kind: "TRANSITION" | "FINALIZE";
+  kind: "TRANSITION" | "FINALIZE" | "DRAW_SURPRISE" | "DECIDE_SURPRISE";
   payload: T;
   createdAt: string;
   attempts: number;

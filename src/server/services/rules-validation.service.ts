@@ -41,6 +41,19 @@ export async function validateEventRules(eventId: string, database: PrismaClient
         .join(" · "),
     },
     {
+      key: "category-levels",
+      label: "Nível OBR explícito nas categorias",
+      ok:
+        !event.surpriseChallenge ||
+        (rescue.every((category) => ["LEVEL1", "LEVEL2"].includes(category.competitionLevel)) &&
+          ["LEVEL1", "LEVEL2"].every((level) =>
+            rescue.some((category) => category.competitionLevel === level),
+          )),
+      detail: rescue
+        .map((category) => `${category.name}: ${category.competitionLevel}`)
+        .join(" · "),
+    },
+    {
       key: "artistic-columns",
       label: "Entrevista, apresentações, penalidades, sustentabilidade e extra",
       ok: artistic.every((category) => category.scoreColumns.length >= 6),
@@ -106,6 +119,7 @@ export async function validateEventRules(eventId: string, database: PrismaClient
     categories: categories.map((category) => ({
       id: category.id,
       type: category.type,
+      competitionLevel: category.competitionLevel,
       formula: category.scoringFormula,
       columns: category.scoreColumns.map((column) => ({ name: column.name, order: column.order })),
     })),

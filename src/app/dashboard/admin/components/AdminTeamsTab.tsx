@@ -21,6 +21,7 @@ interface CategoryListItem {
   id: string;
   name: string;
   type: string;
+  competitionLevel: string;
 }
 
 interface TeamListItem {
@@ -96,9 +97,11 @@ export function AdminTeamsTab({ eventId, categories }: AdminTeamsTabProps) {
   const [createCategoryForm, setCreateCategoryForm] = useState<{
     name: string;
     type: "RESCUE" | "ARTISTIC";
+    competitionLevel: "NONE" | "LEVEL1" | "LEVEL2";
   }>({
     name: "",
     type: "RESCUE",
+    competitionLevel: "LEVEL1",
   });
 
   const { data: teams } = trpc.team.listByEvent.useQuery(eventId);
@@ -106,7 +109,7 @@ export function AdminTeamsTab({ eventId, categories }: AdminTeamsTabProps) {
   const createCategoryMutation = trpc.category.create.useMutation({
     onSuccess: async () => {
       setCreateCategoryError("");
-      setCreateCategoryForm({ name: "", type: "RESCUE" });
+      setCreateCategoryForm({ name: "", type: "RESCUE", competitionLevel: "LEVEL1" });
       await Promise.all([
         utils.category.listByEvent.invalidate(eventId),
         utils.event.getById.invalidate(eventId),
@@ -226,6 +229,7 @@ export function AdminTeamsTab({ eventId, categories }: AdminTeamsTabProps) {
     createCategoryMutation.mutate({
       name,
       type: createCategoryForm.type,
+      competitionLevel: createCategoryForm.competitionLevel,
       eventId,
       applyPreset: true,
     });
@@ -547,7 +551,7 @@ export function AdminTeamsTab({ eventId, categories }: AdminTeamsTabProps) {
         </CardHeader>
         {showCreateCategory && (
           <CardContent>
-            <form onSubmit={handleCreateCategorySubmit} className="grid gap-3 md:grid-cols-3">
+            <form onSubmit={handleCreateCategorySubmit} className="grid gap-3 md:grid-cols-4">
               <input
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 placeholder="Nome da categoria"
@@ -567,6 +571,21 @@ export function AdminTeamsTab({ eventId, categories }: AdminTeamsTabProps) {
               >
                 <option value="RESCUE">Resgate</option>
                 <option value="ARTISTIC">Artística</option>
+              </select>
+              <select
+                aria-label="Nível OBR da nova categoria"
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                value={createCategoryForm.competitionLevel}
+                onChange={(event) =>
+                  handleCreateCategoryChange(
+                    "competitionLevel",
+                    event.target.value as "NONE" | "LEVEL1" | "LEVEL2",
+                  )
+                }
+              >
+                <option value="LEVEL1">Nível 1</option>
+                <option value="LEVEL2">Nível 2</option>
+                <option value="NONE">Não se aplica</option>
               </select>
               <Button type="submit" disabled={createCategoryMutation.isPending}>
                 {createCategoryMutation.isPending ? "Criando..." : "Criar categoria"}

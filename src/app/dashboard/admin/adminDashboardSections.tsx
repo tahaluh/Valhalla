@@ -13,6 +13,7 @@ type CategoryListItem = {
   id: string;
   name: string;
   type: string;
+  competitionLevel: string;
 };
 
 export type AdminDashboardSectionId =
@@ -68,7 +69,9 @@ export const ADMIN_DASHBOARD_SECTIONS: AdminDashboardSection[] = [
   {
     id: "categories",
     label: "Categorias",
-    render: (context) => <AdminCategoriesTab categories={context.categories} />,
+    render: (context) => (
+      <AdminCategoriesTab eventId={context.eventId} categories={context.categories} />
+    ),
   },
   {
     id: "scoring",

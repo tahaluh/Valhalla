@@ -140,6 +140,122 @@ test("API tRPC percorre abertura, chamada, rascunho e início em banco real", as
   );
   const scorecardPdf = await caller.robustness.exportSessionScorecardPdf(started.session.id);
   assert.equal(Buffer.from(scorecardPdf, "base64").subarray(0, 4).toString(), "%PDF");
+
+  const [round2, round3, challengeStation] = await Promise.all([
+    prisma.phase.findFirstOrThrow({
+      where: { eventId: event.id, type: "PRACTICE_ROUND", sequence: 2 },
+    }),
+    prisma.phase.findFirstOrThrow({
+      where: { eventId: event.id, type: "PRACTICE_ROUND", sequence: 3 },
+    }),
+    prisma.evaluationStation.findFirstOrThrow({
+      where: { eventId: event.id, type: "CHALLENGE_TABLE" },
+    }),
+  ]);
+  const challengeSlots = await Promise.all(
+    [round2, round3].map((phase, index) =>
+      prisma.scheduleSlot.create({
+        data: {
+          eventId: event.id,
+          teamId: team.id,
+          phaseId: phase.id,
+          stationId: challengeStation.id,
+          scheduledAt: new Date(`2026-09-10T1${index + 4}:00:00.000Z`),
+          order: 1100 + index,
+        },
+      }),
+    ),
+  );
+  const firstDraw = await referee.operation.drawSurpriseChallenge({
+    slotId: challengeSlots[0]!.id,
+    operatorName: "Juiz do desafio",
+  });
+  assert.equal(firstDraw.surpriseStatus, "DRAWN");
+  assert.equal(firstDraw.surpriseJudgeName, "Juiz do desafio");
+  await assert.rejects(
+    referee.operation.drawSurpriseChallenge({
+      slotId: challengeSlots[0]!.id,
+      operatorName: "Outro juiz",
+    }),
+    /já realizou o sorteio/,
+  );
+  const secondDraw = await referee.operation.drawSurpriseChallenge({
+    slotId: challengeSlots[1]!.id,
+    operatorName: "Juiz do desafio",
+  });
+  assert.notEqual(secondDraw.surpriseChallengeText, firstDraw.surpriseChallengeText);
+  const offlineTeam = await prisma.team.create({
+    data: {
+      name: "Equipe sorteio offline",
+      institution: "Instituição de teste",
+      city: "João Pessoa",
+      state: "PB",
+      categoryId: rescueCategory.id,
+    },
+  });
+  const offlineSlot = await prisma.scheduleSlot.create({
+    data: {
+      eventId: event.id,
+      teamId: offlineTeam.id,
+      phaseId: round2.id,
+      stationId: challengeStation.id,
+      scheduledAt: new Date("2026-09-10T16:00:00.000Z"),
+      order: 1200,
+    },
+  });
+  const officialBank = JSON.parse(event.surpriseChallengeBank) as {
+    LEVEL1: string[];
+    LEVEL2: string[];
+  };
+  const offlineDraw = await referee.operation.drawSurpriseChallenge({
+    slotId: offlineSlot.id,
+    operatorName: "Juiz offline",
+    requestedChallenge: officialBank.LEVEL1[0],
+    offlineDrawnAt: "2026-09-10T15:30:00.000Z",
+  });
+  assert.equal(offlineDraw.surpriseChallengeText, officialBank.LEVEL1[0]);
+  assert.equal(offlineDraw.surpriseDrawnAt?.toISOString(), "2026-09-10T15:30:00.000Z");
+  const absentTeam = await prisma.team.create({
+    data: {
+      name: "Equipe ausente no desafio",
+      institution: "Instituição de teste",
+      city: "João Pessoa",
+      state: "PB",
+      categoryId: rescueCategory.id,
+    },
+  });
+  const absentSlot = await prisma.scheduleSlot.create({
+    data: {
+      eventId: event.id,
+      teamId: absentTeam.id,
+      phaseId: round2.id,
+      stationId: challengeStation.id,
+      scheduledAt: new Date("2026-09-10T17:00:00.000Z"),
+      order: 1201,
+    },
+  });
+  const missed = await referee.operation.setSurpriseDecision({
+    slotId: absentSlot.id,
+    status: "MISSED",
+    operatorName: "Juiz do desafio",
+  });
+  assert.equal(missed.surpriseStatus, "MISSED");
+  assert.equal(missed.surpriseEligible, false);
+  const demonstrated = await referee.operation.saveScorecard({
+    slotId: challengeSlots[0]!.id,
+    scorecard: JSON.stringify({ card: { surpriseChallenge: true } }),
+    expectedVersion: firstDraw.version,
+    operatorName: "Operador da arena",
+    announcerName: "Anunciador teste",
+    scorerName: "Pontuador teste",
+  });
+  assert.equal(demonstrated.surpriseStatus, "DEMONSTRATED");
+  assert.equal(demonstrated.surpriseJudgeName, "Juiz do desafio");
+  assert.ok(
+    (await prisma.auditLog.count({
+      where: { entityId: firstDraw.id, action: "SURPRISE_CHALLENGE_DRAWN" },
+    })) === 1,
+  );
   await prisma.$disconnect();
   rmSync(directory, { recursive: true, force: true });
 });

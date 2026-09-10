@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/presentation/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/presentation/components/ui/card";
+import { TOURNAMENTER_OBR_2026_SURPRISE_CHALLENGES } from "@/domain/entities/surprise-challenge";
 
 type Category = { id: string; name: string; type: string };
 const STATION_LABELS: Record<string, string> = {
@@ -29,6 +30,10 @@ export function AdminOperationsTab({
   const { data: blackouts = [] } = trpc.operation.listBlackouts.useQuery(eventId);
   const { data: arenas = [] } = trpc.arena.listByEvent.useQuery(eventId);
   const { data: event } = trpc.event.getById.useQuery(eventId);
+  const { data: surpriseOverview = [] } = trpc.operation.surpriseQueue.useQuery(eventId, {
+    enabled: Boolean(event?.surpriseChallenge),
+    refetchInterval: 5000,
+  });
   const { data: savedSurpriseBank = { LEVEL1: [], LEVEL2: [] } } =
     trpc.operation.getSurpriseChallengeBank.useQuery(eventId);
   const invalidate = () =>
@@ -74,7 +79,7 @@ export function AdminOperationsTab({
   const swap = trpc.operation.swapSlots.useMutation({ onSuccess: invalidate });
   const clearQueue = trpc.operation.clearPhaseQueue.useMutation({ onSuccess: invalidate });
   const assignSurprise = trpc.operation.setSurpriseAssignment.useMutation({
-    onSuccess: invalidate,
+    onSuccess: () => Promise.all([invalidate(), utils.operation.surpriseQueue.invalidate(eventId)]),
   });
   const exportSessionPdf = trpc.robustness.exportSessionScorecardPdf.useMutation();
   const saveSurpriseBank = trpc.operation.setSurpriseChallengeBank.useMutation({
@@ -100,7 +105,12 @@ export function AdminOperationsTab({
     intervalMinutes: 10,
     stationIds: [] as string[],
   });
-  const [surprise, setSurprise] = useState({ slotId: "", challengeText: "", eligible: true });
+  const [surprise, setSurprise] = useState({
+    slotId: "",
+    challengeText: "",
+    judgeName: "",
+    eligible: true,
+  });
   const [surpriseBank, setSurpriseBank] = useState<{ LEVEL1: string[]; LEVEL2: string[] }>({
     LEVEL1: [""],
     LEVEL2: [""],
@@ -451,6 +461,82 @@ export function AdminOperationsTab({
             <CardTitle>Desafios surpresa</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="rounded-xl border bg-white p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-bold">Acompanhamento geral</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Situação da 2ª e 3ª rodadas, atualizada a cada cinco segundos.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                  {(
+                    [
+                      "PENDING",
+                      "DRAWN",
+                      "DEMONSTRATED",
+                      "NOT_DEMONSTRATED",
+                      "DECLINED",
+                      "MISSED",
+                    ] as const
+                  ).map((status) => (
+                    <span key={status} className="rounded-full border px-2 py-1">
+                      {surpriseStatusAdminLabel(status)}:{" "}
+                      {
+                        surpriseOverview.filter(
+                          (slot) => (slot.session?.surpriseStatus ?? "PENDING") === status,
+                        ).length
+                      }
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="max-h-96 overflow-auto rounded-lg border">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="sticky top-0 bg-[#153c67] text-white">
+                    <tr>
+                      <th className="p-2">Equipe</th>
+                      <th className="p-2">Nível</th>
+                      <th className="p-2">Rodada</th>
+                      <th className="p-2">Sorteio previsto</th>
+                      <th className="p-2">Situação</th>
+                      <th className="p-2">Desafio</th>
+                      <th className="p-2">Juiz / tablet</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {surpriseOverview.map((slot) => {
+                      const status = slot.session?.surpriseStatus ?? "PENDING";
+                      const drawAt = new Date(
+                        new Date(slot.scheduledAt).getTime() - 30 * 60 * 1000,
+                      );
+                      return (
+                        <tr key={slot.id} className="border-t even:bg-slate-50">
+                          <td className="p-2 font-semibold">{slot.team.name}</td>
+                          <td className="p-2">
+                            {slot.team.category.competitionLevel === "LEVEL1"
+                              ? "N1"
+                              : slot.team.category.competitionLevel === "LEVEL2"
+                                ? "N2"
+                                : "Não definido"}
+                          </td>
+                          <td className="p-2">{slot.phase.name}</td>
+                          <td className="p-2">{drawAt.toLocaleString("pt-BR")}</td>
+                          <td className="p-2 font-semibold">{surpriseStatusAdminLabel(status)}</td>
+                          <td className="max-w-sm p-2 text-xs">
+                            {slot.session?.surpriseChallengeText ?? "-"}
+                          </td>
+                          <td className="p-2">
+                            {slot.session?.surpriseJudgeName ?? "-"} ·{" "}
+                            {slot.session?.surpriseTerminalId ?? "-"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
             <div className="rounded-xl border bg-slate-50 p-4">
               <h3 className="font-bold">Bancos para sorteio por nível</h3>
               <p className="mb-3 text-sm text-muted-foreground">
@@ -459,51 +545,68 @@ export function AdminOperationsTab({
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 {(["LEVEL1", "LEVEL2"] as const).map((level) => (
-                  <div key={level} className="space-y-2 rounded-lg border bg-white p-3">
-                    <strong>{level === "LEVEL1" ? "Nível 1" : "Nível 2"}</strong>
-                    {surpriseBank[level].map((challenge, index) => (
-                      <div key={index} className="flex gap-2">
-                        <input
-                          className="h-10 flex-1 rounded-md border px-3"
-                          placeholder={`Desafio ${index + 1}`}
-                          value={challenge}
-                          onChange={(event) =>
-                            setSurpriseBank((old) => ({
-                              ...old,
-                              [level]: old[level].map((item, itemIndex) =>
-                                itemIndex === index ? event.target.value : item,
-                              ),
-                            }))
-                          }
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          aria-label={`Remover desafio ${index + 1}`}
-                          onClick={() =>
-                            setSurpriseBank((old) => ({
-                              ...old,
-                              [level]: old[level].filter((_, i) => i !== index),
-                            }))
-                          }
-                        >
-                          ×
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        setSurpriseBank((old) => ({ ...old, [level]: [...old[level], ""] }))
-                      }
-                    >
-                      + Adicionar ao {level === "LEVEL1" ? "N1" : "N2"}
-                    </Button>
-                  </div>
+                  <details key={level} className="rounded-lg border bg-white p-3">
+                    <summary className="cursor-pointer font-bold text-[#153c67]">
+                      {level === "LEVEL1" ? "Nível 1" : "Nível 2"} ·{" "}
+                      {surpriseBank[level].filter((item) => item.trim()).length} desafios
+                    </summary>
+                    <div className="mt-3 space-y-2">
+                      {surpriseBank[level].map((challenge, index) => (
+                        <div key={index} className="flex gap-2">
+                          <input
+                            className="h-10 flex-1 rounded-md border px-3"
+                            placeholder={`Desafio ${index + 1}`}
+                            value={challenge}
+                            onChange={(event) =>
+                              setSurpriseBank((old) => ({
+                                ...old,
+                                [level]: old[level].map((item, itemIndex) =>
+                                  itemIndex === index ? event.target.value : item,
+                                ),
+                              }))
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            aria-label={`Remover desafio ${index + 1}`}
+                            onClick={() =>
+                              setSurpriseBank((old) => ({
+                                ...old,
+                                [level]: old[level].filter((_, i) => i !== index),
+                              }))
+                            }
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setSurpriseBank((old) => ({ ...old, [level]: [...old[level], ""] }))
+                        }
+                      >
+                        + Adicionar ao {level === "LEVEL1" ? "N1" : "N2"}
+                      </Button>
+                    </div>
+                  </details>
                 ))}
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setSurpriseBank({
+                      LEVEL1: [...TOURNAMENTER_OBR_2026_SURPRISE_CHALLENGES.LEVEL1],
+                      LEVEL2: [...TOURNAMENTER_OBR_2026_SURPRISE_CHALLENGES.LEVEL2],
+                    })
+                  }
+                >
+                  Restaurar banco Tournamenter 2026
+                </Button>
                 <Button
                   type="button"
                   disabled={
@@ -533,7 +636,7 @@ export function AdminOperationsTab({
               <p className="mb-3 text-sm text-muted-foreground">
                 Use somente para registrar um sorteio feito fora da mesa de desafio.
               </p>
-              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
                 <select
                   className="h-10 rounded-md border px-3"
                   value={surprise.slotId}
@@ -556,6 +659,14 @@ export function AdminOperationsTab({
                     setSurprise((old) => ({ ...old, challengeText: e.target.value }))
                   }
                 />
+                <input
+                  className="h-10 rounded-md border px-3"
+                  placeholder="Juiz responsável pelo sorteio"
+                  value={surprise.judgeName}
+                  onChange={(event) =>
+                    setSurprise((old) => ({ ...old, judgeName: event.target.value }))
+                  }
+                />
                 <label className="flex items-center rounded-md border px-3 text-sm">
                   <input
                     type="checkbox"
@@ -569,6 +680,7 @@ export function AdminOperationsTab({
               <Button
                 disabled={
                   !surprise.slotId ||
+                  !surprise.judgeName.trim() ||
                   (surprise.eligible && !surprise.challengeText.trim()) ||
                   assignSurprise.isPending
                 }
@@ -577,6 +689,7 @@ export function AdminOperationsTab({
                     slotId: surprise.slotId,
                     eligible: surprise.eligible,
                     challengeText: surprise.challengeText || undefined,
+                    judgeName: surprise.judgeName,
                   })
                 }
               >
@@ -1051,6 +1164,19 @@ export function AdminOperationsTab({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function surpriseStatusAdminLabel(status: string) {
+  return (
+    {
+      PENDING: "Aguardando",
+      DRAWN: "Sorteado",
+      DECLINED: "Recusado",
+      MISSED: "Não compareceu",
+      DEMONSTRATED: "Concluído",
+      NOT_DEMONSTRATED: "Não demonstrado",
+    }[status] ?? status
   );
 }
 

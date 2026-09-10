@@ -4,6 +4,7 @@ import type {
   CreateCategoryInput,
   UpdateCategoryInput,
   CategoryType,
+  CompetitionLevel,
 } from "@/domain/entities/category";
 import type { CategoryRepository } from "@/domain/repositories/category.repository";
 import { prisma } from "@/infrastructure/database/prisma";
@@ -12,13 +13,18 @@ function mapCategory(raw: {
   id: string;
   name: string;
   type: string;
+  competitionLevel: string;
   order: number;
   scoringFormula: string;
   eventId: string;
   createdAt: Date;
   updatedAt: Date;
 }): Category {
-  return { ...raw, type: raw.type as CategoryType };
+  return {
+    ...raw,
+    type: raw.type as CategoryType,
+    competitionLevel: raw.competitionLevel as CompetitionLevel,
+  };
 }
 
 export class PrismaCategoryRepository implements CategoryRepository {

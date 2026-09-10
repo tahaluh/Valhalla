@@ -1,11 +1,13 @@
 // Domain entity types for Category
 
 export type CategoryType = "RESCUE" | "ARTISTIC";
+export type CompetitionLevel = "NONE" | "LEVEL1" | "LEVEL2";
 
 export interface Category {
   id: string;
   name: string;
   type: CategoryType;
+  competitionLevel: CompetitionLevel;
   order: number;
   scoringFormula: string;
   eventId: string;
@@ -40,11 +42,15 @@ export type CategoryPreset = {
 
 // ─── Default categories ───────────────────────────────────────────────────────
 
-export const DEFAULT_CATEGORIES: Array<{ name: string; type: CategoryType }> = [
-  { name: "Resgate Nível 1", type: "RESCUE" },
-  { name: "Resgate Nível 2", type: "RESCUE" },
-  { name: "Artística Nível 1", type: "ARTISTIC" },
-  { name: "Artística Nível 2", type: "ARTISTIC" },
+export const DEFAULT_CATEGORIES: Array<{
+  name: string;
+  type: CategoryType;
+  competitionLevel: CompetitionLevel;
+}> = [
+  { name: "Resgate Nível 1", type: "RESCUE", competitionLevel: "LEVEL1" },
+  { name: "Resgate Nível 2", type: "RESCUE", competitionLevel: "LEVEL2" },
+  { name: "Artística Nível 1", type: "ARTISTIC", competitionLevel: "LEVEL1" },
+  { name: "Artística Nível 2", type: "ARTISTIC", competitionLevel: "LEVEL2" },
 ];
 
 // ─── Preset score column names ────────────────────────────────────────────────

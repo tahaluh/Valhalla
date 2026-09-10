@@ -519,6 +519,26 @@ export const robustnessRouter = router({
       line("Anunciador", session.announcerName);
       line("Pontuador", session.scorerName);
       line("Tablet", session.terminalId);
+      y -= 5;
+      line("DESAFIO SURPRESA", undefined, 12, true);
+      line("Desafio sorteado", session.surpriseChallengeText);
+      line(
+        "Situacao final",
+        (
+          {
+            PENDING: "Aguardando",
+            DRAWN: "Sorteado",
+            DECLINED: "Recusado",
+            MISSED: "Nao compareceu",
+            DEMONSTRATED: "Concluido",
+            NOT_DEMONSTRATED: "Nao demonstrado",
+          } as Record<string, string>
+        )[session.surpriseStatus] ?? session.surpriseStatus,
+      );
+      line("Horario do sorteio", session.surpriseDrawnAt?.toLocaleString("pt-BR"));
+      line("Juiz de Desafio", session.surpriseJudgeName);
+      line("Tablet do sorteio", session.surpriseTerminalId);
+      line("Elegivel ao multiplicador", session.surpriseEligible ? "Sim" : "Nao");
       if (session.judgeScores.length) {
         y -= 5;
         line("JURADOS", undefined, 12, true);

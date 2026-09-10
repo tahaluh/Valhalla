@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { DEFAULT_CATEGORIES, getCategoryPreset } from "../src/domain/entities/category";
+import { TOURNAMENTER_OBR_2026_SURPRISE_CHALLENGES } from "../src/domain/entities/surprise-challenge";
 import { DEFAULT_RESCUE_RULESET_2026 } from "../src/domain/entities/ruleset";
 
 const prisma = new PrismaClient();
@@ -83,16 +84,7 @@ async function main() {
       refereePassword: passwordHash,
       secretariatPassword: passwordHash,
       surpriseChallenge: true,
-      surpriseChallengeBank: JSON.stringify({
-        LEVEL1: [
-          "Ao identificar a marca indicada pelo juiz, o robô deve emitir um sinal sonoro por 2 segundos.",
-          "Ao alcançar o checkpoint indicado, o robô deve parar por 3 segundos e retomar o percurso.",
-        ],
-        LEVEL2: [
-          "Ao superar a gangorra, o robô deve piscar um LED três vezes antes de continuar.",
-          "Após a vítima indicada, o robô deve executar uma volta completa antes de seguir.",
-        ],
-      }),
+      surpriseChallengeBank: JSON.stringify(TOURNAMENTER_OBR_2026_SURPRISE_CHALLENGES),
       rulesUpdateNotice: "Ambiente demonstrativo configurado para as regras presenciais OBR 2026.",
       publicRankingMode: "LIVE",
       resultsStatus: "PROVISIONAL",
@@ -246,6 +238,7 @@ async function main() {
         eventId: event.id,
         name: defaultCategory.name,
         type: defaultCategory.type,
+        competitionLevel: defaultCategory.competitionLevel,
         order,
         scoringFormula: preset.scoringFormula,
       },

@@ -25,6 +25,12 @@ test("fila offline preserva ordem, falha e remoção", () => {
     payload: { state: "CALLED" },
   });
   enqueueOfflineCommand(storage, {
+    id: "3",
+    eventId: "event",
+    kind: "DRAW_SURPRISE",
+    payload: { slotId: "slot", requestedChallenge: "Desafio local" },
+  });
+  enqueueOfflineCommand(storage, {
     id: "2",
     eventId: "event",
     kind: "TRANSITION",
@@ -32,15 +38,15 @@ test("fila offline preserva ordem, falha e remoção", () => {
   });
   assert.deepEqual(
     readOfflineCommands(storage, "event").map((item) => item.id),
-    ["1", "2"],
+    ["1", "3", "2"],
   );
   markOfflineCommandFailure(storage, "1", "sem rede");
   assert.equal(readOfflineCommands(storage)[0]?.attempts, 1);
   updateOfflineCommandPayload(storage, "2", { stage: "TRANSITION" });
-  assert.deepEqual(readOfflineCommands(storage)[1]?.payload, { stage: "TRANSITION" });
+  assert.deepEqual(readOfflineCommands(storage)[2]?.payload, { stage: "TRANSITION" });
   removeOfflineCommand(storage, "1");
   assert.deepEqual(
     readOfflineCommands(storage).map((item) => item.id),
-    ["2"],
+    ["3", "2"],
   );
 });

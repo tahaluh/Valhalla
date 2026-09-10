@@ -125,11 +125,12 @@ model ScheduleBlackout {
 // ─── Category ─────────────────────────────────────────────────────────────────
 
 model Category {
-  id             String @id @default(cuid())
-  name           String
-  type           String // "RESCUE" | "ARTISTIC"
-  order          Int    @default(0)
-  scoringFormula String // JavaScript function source code
+  id               String @id @default(cuid())
+  name             String
+  type             String // "RESCUE" | "ARTISTIC"
+  competitionLevel String @default("NONE") // NONE | LEVEL1 | LEVEL2
+  order            Int    @default(0)
+  scoringFormula   String // JavaScript function source code
 
   eventId String
   event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -276,6 +277,8 @@ model EvaluationSession {
   surpriseChallengeText   String?
   surpriseDrawnAt         DateTime?
   surpriseStatus          String                   @default("PENDING") // PENDING | DRAWN | DECLINED | MISSED | DEMONSTRATED | NOT_DEMONSTRATED
+  surpriseJudgeName       String?
+  surpriseTerminalId      String?
   terminalId              String?
   terminal                Terminal?                @relation(fields: [terminalId], references: [id], onDelete: SetNull)
   appeals                 FormalAppeal[]

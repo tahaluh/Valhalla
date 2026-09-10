@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import type { PrismaClient } from "@prisma/client";
 import { router, publicProcedure, adminProcedure } from "@/server/trpc/trpc";
 import { DEFAULT_CATEGORIES, getCategoryPreset } from "@/domain/entities/category";
+import { TOURNAMENTER_OBR_2026_SURPRISE_CHALLENGES } from "@/domain/entities/surprise-challenge";
 import { AuthService } from "@/application/services/auth.service";
 
 const createEventSchema = z.object({
@@ -61,6 +62,7 @@ async function createEventWithDefaults(
       refereePassword: refereeHash,
       secretariatPassword: secretariatHash,
       isActive,
+      surpriseChallengeBank: JSON.stringify(TOURNAMENTER_OBR_2026_SURPRISE_CHALLENGES),
     },
   });
 
@@ -72,6 +74,7 @@ async function createEventWithDefaults(
       data: {
         name: defaultCat.name,
         type: defaultCat.type,
+        competitionLevel: defaultCat.competitionLevel,
         order: index,
         scoringFormula: preset.scoringFormula,
         eventId: event.id,

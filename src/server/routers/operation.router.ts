@@ -14,6 +14,10 @@ import {
   findArtisticTiebreakGroups,
   type ArtisticCard,
 } from "@/domain/entities/artistic";
+import {
+  chooseSurpriseChallenge,
+  type SurpriseChallengeLevel,
+} from "@/domain/entities/surprise-challenge";
 
 const stationSchema = z.object({
   eventId: z.string().min(1),
@@ -366,7 +370,7 @@ export const operationRouter = router({
   listSchedule: adminProcedure.input(z.string()).query(({ ctx, input: eventId }) =>
     ctx.prisma.scheduleSlot.findMany({
       where: { eventId },
-      include: { team: true, phase: true, station: true, session: true },
+      include: { team: { include: { category: true } }, phase: true, station: true, session: true },
       orderBy: [{ scheduledAt: "asc" }, { order: "asc" }],
     }),
   ),
@@ -808,6 +812,7 @@ export const operationRouter = router({
         slotId: z.string(),
         eligible: z.boolean(),
         challengeText: z.string().trim().max(1000).optional(),
+        judgeName: z.string().trim().min(2).max(120),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -822,6 +827,7 @@ export const operationRouter = router({
         surpriseChallengeText: input.challengeText || null,
         surpriseDrawnAt: new Date(),
         surpriseStatus: input.eligible ? "DRAWN" : "MISSED",
+        surpriseJudgeName: input.judgeName,
       };
       let session;
       if (slot.session) {
@@ -852,6 +858,7 @@ export const operationRouter = router({
         teamId: slot.teamId,
         before: slot.session,
         after: session,
+        operatorName: input.judgeName,
         reason: input.eligible ? "Sorteio registrado" : "Equipe inelegível/ausente no sorteio",
       });
       return session;
@@ -897,6 +904,15 @@ export const operationRouter = router({
       if (!event) throw new Error("Evento não encontrado.");
       return parseChallengeBanks(event.surpriseChallengeBank);
     }),
+  surpriseOfflineKit: refereeProcedure.input(z.string()).query(async ({ ctx, input: eventId }) => {
+    assertSessionEvent(ctx.user, eventId);
+    const event = await ctx.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { surpriseChallengeBank: true, updatedAt: true },
+    });
+    if (!event) throw new Error("Evento não encontrado.");
+    return { banks: parseChallengeBanks(event.surpriseChallengeBank), version: event.updatedAt };
+  }),
   surpriseQueue: refereeProcedure.input(z.string()).query(async ({ ctx, input: eventId }) => {
     assertSessionEvent(ctx.user, eventId);
     const practicePhases = await ctx.prisma.phase.findMany({
@@ -908,7 +924,7 @@ export const operationRouter = router({
     if (!eligiblePhaseIds.length) return [];
     return ctx.prisma.scheduleSlot.findMany({
       where: { eventId, phaseId: { in: eligiblePhaseIds } },
-      include: { team: true, phase: true, station: true, session: true },
+      include: { team: { include: { category: true } }, phase: true, station: true, session: true },
       orderBy: [{ scheduledAt: "asc" }, { order: "asc" }],
     });
   }),
@@ -918,6 +934,8 @@ export const operationRouter = router({
         slotId: z.string(),
         terminalId: z.string().optional(),
         operatorName: z.string().trim().min(1),
+        requestedChallenge: z.string().trim().min(3).max(1000).optional(),
+        offlineDrawnAt: z.string().datetime().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -938,24 +956,17 @@ export const operationRouter = router({
       if (!practicePhases.slice(1, 3).some((phase) => phase.id === slot.phaseId))
         throw new Error("O desafio surpresa só está disponível na 2ª e 3ª rodadas.");
       const banks = parseChallengeBanks(slot.event.surpriseChallengeBank);
-      const categoryName = (
+      const category = (
         await ctx.prisma.team.findUniqueOrThrow({
           where: { id: slot.teamId },
           include: { category: true },
         })
-      ).category.name;
-      // Word-bounded matches to avoid false positives like "Nível 2021" or "Nível 21".
-      const isLevel2 = /(?:^|[^0-9a-zà-ú])n(?:í|i)vel\s*2(?:[^0-9]|$)|\bn2\b/i.test(categoryName);
-      const isLevel1 = /(?:^|[^0-9a-zà-ú])n(?:í|i)vel\s*1(?:[^0-9]|$)|\bn1\b/i.test(categoryName);
-      if (isLevel1 && isLevel2)
+      ).category;
+      if (!(["LEVEL1", "LEVEL2"] as string[]).includes(category.competitionLevel))
         throw new Error(
-          `Não foi possível identificar o nível do desafio surpresa para a categoria "${categoryName}": o nome menciona os dois níveis.`,
+          `Defina explicitamente o nível da categoria "${category.name}" no painel administrativo.`,
         );
-      if (!isLevel1 && !isLevel2)
-        throw new Error(
-          `Não foi possível identificar o nível do desafio surpresa para a categoria "${categoryName}". Inclua "Nível 1" ou "Nível 2" no nome da categoria.`,
-        );
-      const level = isLevel2 ? "LEVEL2" : "LEVEL1";
+      const level = category.competitionLevel as SurpriseChallengeLevel;
       let bank = banks[level];
       bank = bank.filter((challenge) => typeof challenge === "string" && challenge.trim());
       if (!bank.length) throw new Error("Cadastre ao menos um desafio surpresa no painel admin.");
@@ -966,16 +977,24 @@ export const operationRouter = router({
         },
         select: { surpriseChallengeText: true },
       });
-      const unused = bank.filter(
-        (challenge) => !previous.some((session) => session.surpriseChallengeText === challenge),
-      );
-      if (unused.length) bank = unused;
-      const challenge = bank[Math.floor(Math.random() * bank.length)]!;
+      const previouslyDrawn = previous.map((session) => session.surpriseChallengeText);
+      const challenge = input.requestedChallenge
+        ? input.requestedChallenge
+        : chooseSurpriseChallenge(bank, previouslyDrawn);
+      if (!bank.includes(challenge))
+        throw new Error("O desafio offline não pertence ao banco vigente desta categoria.");
+      if (
+        previouslyDrawn.includes(challenge) &&
+        bank.some((candidate) => !previouslyDrawn.includes(candidate))
+      )
+        throw new Error("Este desafio já foi usado pela equipe e ainda existem opções inéditas.");
       const data = {
         surpriseEligible: true,
         surpriseChallengeText: challenge,
-        surpriseDrawnAt: new Date(),
+        surpriseDrawnAt: input.offlineDrawnAt ? new Date(input.offlineDrawnAt) : new Date(),
         surpriseStatus: "DRAWN",
+        surpriseJudgeName: slot.session?.surpriseJudgeName ?? input.operatorName,
+        surpriseTerminalId: slot.session?.surpriseTerminalId ?? input.terminalId,
         terminalId: input.terminalId,
         operatorName: input.operatorName,
       };
@@ -1010,7 +1029,7 @@ export const operationRouter = router({
         operatorName: input.operatorName,
         before: slot.session,
         after: session,
-        reason: `${slot.phase.name} · sorteio único`,
+        reason: `${slot.phase.name} · sorteio único${input.offlineDrawnAt ? " · originado offline" : ""}`,
       });
       return session;
     }),
@@ -1041,6 +1060,8 @@ export const operationRouter = router({
         surpriseEligible: false,
         surpriseDrawnAt: slot.session?.surpriseDrawnAt ?? new Date(),
         surpriseStatus: input.status,
+        surpriseJudgeName: slot.session?.surpriseJudgeName ?? input.operatorName,
+        surpriseTerminalId: slot.session?.surpriseTerminalId ?? input.terminalId,
         terminalId: input.terminalId,
         operatorName: input.operatorName,
       };
