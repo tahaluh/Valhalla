@@ -179,11 +179,18 @@ test("API tRPC percorre abertura, chamada, rascunho e início em banco real", as
     }),
     /já realizou o sorteio/,
   );
+  const redrawn = await referee.operation.drawSurpriseChallenge({
+    slotId: challengeSlots[0]!.id,
+    operatorName: "Juiz do desafio",
+    regenerate: true,
+  });
+  assert.notEqual(redrawn.surpriseChallengeText, firstDraw.surpriseChallengeText);
   const secondDraw = await referee.operation.drawSurpriseChallenge({
     slotId: challengeSlots[1]!.id,
     operatorName: "Juiz do desafio",
   });
   assert.notEqual(secondDraw.surpriseChallengeText, firstDraw.surpriseChallengeText);
+  assert.notEqual(secondDraw.surpriseChallengeText, redrawn.surpriseChallengeText);
   const offlineTeam = await prisma.team.create({
     data: {
       name: "Equipe sorteio offline",
@@ -244,7 +251,7 @@ test("API tRPC percorre abertura, chamada, rascunho e início em banco real", as
   const demonstrated = await referee.operation.saveScorecard({
     slotId: challengeSlots[0]!.id,
     scorecard: JSON.stringify({ card: { surpriseChallenge: true } }),
-    expectedVersion: firstDraw.version,
+    expectedVersion: redrawn.version,
     operatorName: "Operador da arena",
     announcerName: "Anunciador teste",
     scorerName: "Pontuador teste",
@@ -255,6 +262,12 @@ test("API tRPC percorre abertura, chamada, rascunho e início em banco real", as
     (await prisma.auditLog.count({
       where: { entityId: firstDraw.id, action: "SURPRISE_CHALLENGE_DRAWN" },
     })) === 1,
+  );
+  assert.equal(
+    await prisma.auditLog.count({
+      where: { entityId: firstDraw.id, action: "SURPRISE_CHALLENGE_REDRAWN" },
+    }),
+    1,
   );
   await prisma.$disconnect();
   rmSync(directory, { recursive: true, force: true });

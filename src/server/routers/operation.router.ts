@@ -936,6 +936,7 @@ export const operationRouter = router({
         operatorName: z.string().trim().min(1),
         requestedChallenge: z.string().trim().min(3).max(1000).optional(),
         offlineDrawnAt: z.string().datetime().optional(),
+        regenerate: z.boolean().default(false),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -946,8 +947,13 @@ export const operationRouter = router({
       if (!slot) throw new Error("Rodada não encontrada.");
       assertSessionEvent(ctx.user, slot.eventId);
       if (!slot.event.surpriseChallenge) throw new Error("O desafio surpresa está desativado.");
-      if (slot.session?.surpriseDrawnAt)
+      if (slot.session?.surpriseDrawnAt && !input.regenerate)
         throw new Error("Esta equipe já realizou o sorteio para esta rodada.");
+      if (
+        input.regenerate &&
+        (!slot.session?.surpriseDrawnAt || slot.session.surpriseStatus !== "DRAWN")
+      )
+        throw new Error("Só é possível gerar novamente um desafio sorteado e ainda em aberto.");
       const practicePhases = await ctx.prisma.phase.findMany({
         where: { eventId: slot.eventId, type: "PRACTICE_ROUND" },
         orderBy: { sequence: "asc" },
@@ -970,14 +976,36 @@ export const operationRouter = router({
       let bank = banks[level];
       bank = bank.filter((challenge) => typeof challenge === "string" && challenge.trim());
       if (!bank.length) throw new Error("Cadastre ao menos um desafio surpresa no painel admin.");
-      const previous = await ctx.prisma.evaluationSession.findMany({
-        where: {
-          slot: { eventId: slot.eventId, teamId: slot.teamId },
-          surpriseChallengeText: { not: null },
-        },
-        select: { surpriseChallengeText: true },
+      const [previous, drawHistory] = await Promise.all([
+        ctx.prisma.evaluationSession.findMany({
+          where: {
+            slot: { eventId: slot.eventId, teamId: slot.teamId },
+            surpriseChallengeText: { not: null },
+          },
+          select: { surpriseChallengeText: true },
+        }),
+        ctx.prisma.auditLog.findMany({
+          where: {
+            eventId: slot.eventId,
+            teamId: slot.teamId,
+            action: { in: ["SURPRISE_CHALLENGE_DRAWN", "SURPRISE_CHALLENGE_REDRAWN"] },
+          },
+          select: { after: true },
+        }),
+      ]);
+      const historicalChallenges = drawHistory.flatMap((entry) => {
+        try {
+          const challenge = (JSON.parse(entry.after ?? "{}") as { surpriseChallengeText?: unknown })
+            .surpriseChallengeText;
+          return typeof challenge === "string" ? [challenge] : [];
+        } catch {
+          return [];
+        }
       });
-      const previouslyDrawn = previous.map((session) => session.surpriseChallengeText);
+      const previouslyDrawn = [
+        ...previous.map((session) => session.surpriseChallengeText),
+        ...historicalChallenges,
+      ];
       const challenge = input.requestedChallenge
         ? input.requestedChallenge
         : chooseSurpriseChallenge(bank, previouslyDrawn);
@@ -993,19 +1021,21 @@ export const operationRouter = router({
         surpriseChallengeText: challenge,
         surpriseDrawnAt: input.offlineDrawnAt ? new Date(input.offlineDrawnAt) : new Date(),
         surpriseStatus: "DRAWN",
-        surpriseJudgeName: slot.session?.surpriseJudgeName ?? input.operatorName,
-        surpriseTerminalId: slot.session?.surpriseTerminalId ?? input.terminalId,
+        surpriseJudgeName: input.operatorName,
+        surpriseTerminalId: input.terminalId,
         terminalId: input.terminalId,
         operatorName: input.operatorName,
       };
       let session;
       if (slot.session) {
         const claimed = await ctx.prisma.evaluationSession.updateMany({
-          where: { id: slot.session.id, surpriseDrawnAt: null },
+          where: input.regenerate
+            ? { id: slot.session.id, version: slot.session.version, surpriseStatus: "DRAWN" }
+            : { id: slot.session.id, surpriseDrawnAt: null },
           data: { ...data, version: { increment: 1 } },
         });
         if (!claimed.count)
-          throw new Error("Outro tablet acabou de registrar o sorteio desta equipe.");
+          throw new Error("Outro tablet acabou de alterar o sorteio desta equipe.");
         session = await ctx.prisma.evaluationSession.findUniqueOrThrow({
           where: { id: slot.session.id },
         });
@@ -1020,7 +1050,7 @@ export const operationRouter = router({
       }
       await audit(ctx, {
         eventId: slot.eventId,
-        action: "SURPRISE_CHALLENGE_DRAWN",
+        action: input.regenerate ? "SURPRISE_CHALLENGE_REDRAWN" : "SURPRISE_CHALLENGE_DRAWN",
         entityType: "EvaluationSession",
         entityId: session.id,
         stationId: slot.stationId,
@@ -1029,7 +1059,7 @@ export const operationRouter = router({
         operatorName: input.operatorName,
         before: slot.session,
         after: session,
-        reason: `${slot.phase.name} · sorteio único${input.offlineDrawnAt ? " · originado offline" : ""}`,
+        reason: `${slot.phase.name} · ${input.regenerate ? "novo sorteio individual" : "sorteio individual"}${input.offlineDrawnAt ? " · originado offline" : ""}`,
       });
       return session;
     }),

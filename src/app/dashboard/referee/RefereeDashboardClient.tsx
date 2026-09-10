@@ -121,6 +121,7 @@ type SurpriseDrawPayload = {
   operatorName: string;
   requestedChallenge?: string;
   offlineDrawnAt?: string;
+  regenerate?: boolean;
 };
 type SurpriseDecisionPayload = {
   slotId: string;
@@ -656,7 +657,10 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       return undefined;
     }
   }
-  function queueOfflineSurpriseDraw(slot: NonNullable<typeof surpriseQueueQuery.data>[number]) {
+  function queueOfflineSurpriseDraw(
+    slot: NonNullable<typeof surpriseQueueQuery.data>[number],
+    regenerate = false,
+  ) {
     const level = slot.team.category.competitionLevel as SurpriseChallengeLevel;
     const banks = readCachedSurpriseBanks();
     if (!banks || !["LEVEL1", "LEVEL2"].includes(level) || !banks[level]?.length) {
@@ -675,23 +679,29 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       operatorName,
       requestedChallenge: challenge,
       offlineDrawnAt: new Date().toISOString(),
+      regenerate,
     };
     queueOfflineCommand("DRAW_SURPRISE", payload);
     setLocalSurprise((current) => ({
       ...current,
       [slot.id]: { status: "DRAWN", challengeText: challenge },
     }));
-    setMessage("Sorteio salvo neste tablet. Será sincronizado automaticamente ao reconectar.");
+    setMessage(
+      `${regenerate ? "Novo sorteio" : "Sorteio"} salvo neste tablet. Será sincronizado automaticamente ao reconectar.`,
+    );
   }
-  async function handleSurpriseDraw(slot: NonNullable<typeof surpriseQueueQuery.data>[number]) {
+  async function handleSurpriseDraw(
+    slot: NonNullable<typeof surpriseQueueQuery.data>[number],
+    regenerate = false,
+  ) {
     if (!navigator.onLine) {
-      queueOfflineSurpriseDraw(slot);
+      queueOfflineSurpriseDraw(slot, regenerate);
       return;
     }
     try {
-      await drawSurprise.mutateAsync({ slotId: slot.id, terminalId, operatorName });
+      await drawSurprise.mutateAsync({ slotId: slot.id, terminalId, operatorName, regenerate });
     } catch (error) {
-      if (isConnectionFailure(error)) queueOfflineSurpriseDraw(slot);
+      if (isConnectionFailure(error)) queueOfflineSurpriseDraw(slot, regenerate);
     }
   }
   async function handleSurpriseDecision(slotId: string, status: "DECLINED" | "MISSED") {
@@ -1271,8 +1281,8 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                 <p className="text-sm font-bold text-[#164c78]">MESA DE DESAFIO</p>
                 <CardTitle>Sorteio do desafio surpresa</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Sorteio único por equipe, 30 minutos antes da 2ª e 3ª rodadas. Tudo fica salvo no
-                  histórico.
+                  Geração individual por equipe, 30 minutos antes da 2ª e 3ª rodadas. Se for preciso
+                  gerar novamente, a substituição também fica salva no histórico.
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1421,18 +1431,31 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                         </div>
                       )}
                       {status === "DRAWN" && (
-                        <Button
-                          variant="outline"
-                          className="mt-3 border-amber-400 text-amber-900"
-                          disabled={!officialsConfirmed || decideSurprise.isPending}
-                          onClick={() =>
-                            confirm(
-                              `Registrar que ${slot.team.name} desistiu de executar o desafio já sorteado?`,
-                            ) && void handleSurpriseDecision(slot.id, "DECLINED")
-                          }
-                        >
-                          Registrar desistência após sorteio
-                        </Button>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <Button
+                            className="h-12 bg-[#164c78] font-bold text-white hover:bg-[#153c67]"
+                            disabled={!officialsConfirmed || drawSurprise.isPending}
+                            onClick={() =>
+                              confirm(
+                                `Gerar outro desafio somente para ${slot.team.name}? O desafio atual será substituído e a troca ficará no histórico.`,
+                              ) && void handleSurpriseDraw(slot, true)
+                            }
+                          >
+                            🎲 Gerar novamente
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="h-12 border-amber-400 text-amber-900"
+                            disabled={!officialsConfirmed || decideSurprise.isPending}
+                            onClick={() =>
+                              confirm(
+                                `Registrar que ${slot.team.name} desistiu de executar o desafio já sorteado?`,
+                              ) && void handleSurpriseDecision(slot.id, "DECLINED")
+                            }
+                          >
+                            Registrar desistência
+                          </Button>
+                        </div>
                       )}
                       {!locked && (
                         <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -1440,9 +1463,8 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                             className="h-12 bg-[#8dbf45] font-bold text-[#123b63] hover:bg-[#a5d060]"
                             disabled={!officialsConfirmed || drawSurprise.isPending}
                             onClick={() =>
-                              confirm(
-                                `Sortear agora o desafio de ${slot.team.name}? O sorteio não poderá ser repetido.`,
-                              ) && void handleSurpriseDraw(slot)
+                              confirm(`Gerar agora o desafio individual de ${slot.team.name}?`) &&
+                              void handleSurpriseDraw(slot)
                             }
                           >
                             🎲 Sortear e salvar

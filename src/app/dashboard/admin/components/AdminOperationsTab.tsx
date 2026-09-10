@@ -540,8 +540,8 @@ export function AdminOperationsTab({
             <div className="rounded-xl border bg-slate-50 p-4">
               <h3 className="font-bold">Bancos para sorteio por nível</h3>
               <p className="mb-3 text-sm text-muted-foreground">
-                O Juiz de Desafio sorteará uma destas opções, uma única vez por equipe na 2ª e 3ª
-                rodadas.
+                O Juiz de Desafio gera uma opção individual para cada equipe na 2ª e 3ª rodadas e
+                pode substituí-la de forma auditada antes da conclusão.
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 {(["LEVEL1", "LEVEL2"] as const).map((level) => (
