@@ -35,7 +35,9 @@ export function TRPCProvider({ children }: TRPCProviderProps) {
     trpc.createClient({
       links: [
         httpBatchLink({
-          url: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/trpc`,
+          // No navegador, use sempre a mesma origem que abriu a página. Assim um
+          // tablet acessando pelo IP da LAN não tenta consultar "localhost".
+          url: "/api/trpc",
         }),
       ],
     }),

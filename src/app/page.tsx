@@ -19,12 +19,22 @@ export default async function HomePage() {
     redirect("/login");
   }
 
+  const sessionEventExists = await prisma.event.count({ where: { id: session.user.eventId } });
+  if (!sessionEventExists) {
+    session.destroy();
+    redirect("/login");
+  }
+
   if (session.user.role === "ADMIN") {
     redirect("/dashboard/admin");
   }
 
   if (session.user.role === "REFEREE") {
     redirect("/dashboard/referee");
+  }
+
+  if (session.user.role === "SECRETARIAT") {
+    redirect("/dashboard/secretariat");
   }
 
   redirect("/view");
