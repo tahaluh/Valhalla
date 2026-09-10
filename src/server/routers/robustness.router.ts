@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { syncEventToOlimpo } from "@/server/services/olimpo.service";
 import { buildEventBackup, type EventBackup } from "@/server/services/backup.service";
+import { validateEventRules } from "@/server/services/rules-validation.service";
 
 async function assertOwnEvent(sessionEventId: string, eventId: string) {
   if (sessionEventId !== eventId)
@@ -22,6 +23,59 @@ const restoreSchema = z.object({
 });
 
 export const robustnessRouter = router({
+  validateRules: adminProcedure.input(z.string()).query(async ({ ctx, input: eventId }) => {
+    await assertOwnEvent(ctx.user.eventId, eventId);
+    return validateEventRules(eventId, ctx.prisma);
+  }),
+  approveRules: adminProcedure
+    .input(
+      z.object({
+        eventId: z.string(),
+        approvedBy: z.string().trim().min(2).max(120),
+        reference: z.string().trim().min(3).max(200),
+        notes: z.string().trim().max(2000).optional(),
+        organizerApproved: z.literal(true),
+        normalizationApproved: z.literal(true),
+        surpriseApproved: z.literal(true),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertOwnEvent(ctx.user.eventId, input.eventId);
+      const validation = await validateEventRules(input.eventId, ctx.prisma);
+      if (!validation.valid)
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Corrija todos os itens objetivos antes de aprovar as regras.",
+        });
+      const approvedAt = new Date();
+      const event = await ctx.prisma.event.update({
+        where: { id: input.eventId },
+        data: {
+          rulesValidatedAt: approvedAt,
+          rulesValidatedBy: input.approvedBy,
+          rulesValidationReference: input.reference,
+          rulesValidationNotes: input.notes,
+          rulesValidationHash: validation.hash,
+        },
+      });
+      await ctx.prisma.auditLog.create({
+        data: {
+          eventId: input.eventId,
+          action: "RULES_HOMOLOGATED",
+          entityType: "Event",
+          entityId: input.eventId,
+          actorRole: ctx.user.role,
+          operatorName: input.approvedBy,
+          after: JSON.stringify({
+            reference: input.reference,
+            notes: input.notes,
+            hash: validation.hash,
+            approvedAt,
+          }),
+        },
+      });
+      return event;
+    }),
   diagnostics: adminProcedure.input(z.string()).query(async ({ ctx, input: eventId }) => {
     await assertOwnEvent(ctx.user.eventId, eventId);
     const started = Date.now();
@@ -358,6 +412,130 @@ export const robustnessRouter = router({
     }
     return `\uFEFF${lines.join("\n")}`;
   }),
+  exportSessionScorecardPdf: adminProcedure
+    .input(z.string())
+    .mutation(async ({ ctx, input: sessionId }) => {
+      const session = await ctx.prisma.evaluationSession.findUnique({
+        where: { id: sessionId },
+        include: {
+          judgeScores: { orderBy: { judgeName: "asc" } },
+          slot: {
+            include: { team: { include: { category: true } }, phase: true, station: true },
+          },
+        },
+      });
+      if (!session || session.slot.eventId !== ctx.user.eventId)
+        throw new TRPCError({ code: "NOT_FOUND", message: "Ficha não encontrada." });
+      const scores = await ctx.prisma.score.findMany({
+        where: { teamId: session.slot.teamId, categoryId: session.slot.team.categoryId },
+        orderBy: { columnIndex: "asc" },
+      });
+      const pdf = await PDFDocument.create();
+      const regular = await pdf.embedFont(StandardFonts.Helvetica);
+      const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+      let page = pdf.addPage([595, 842]);
+      let y = 800;
+      const safe = (value: unknown) =>
+        String(value ?? "-")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replaceAll(/[^\x20-\x7E]/g, "?");
+      const flatten = (value: unknown, prefix = ""): Array<[string, unknown]> => {
+        if (Array.isArray(value))
+          return value.flatMap((item, index) => flatten(item, `${prefix}[${index + 1}]`));
+        if (value && typeof value === "object")
+          return Object.entries(value as Record<string, unknown>).flatMap(([key, item]) =>
+            flatten(item, prefix ? `${prefix}.${key}` : key),
+          );
+        return [[prefix || "valor", value]];
+      };
+      const line = (label: string, value?: unknown, size = 10, strong = false) => {
+        const text = value === undefined ? label : `${label}: ${safe(value)}`;
+        const words = safe(text).split(/\s+/);
+        const rows: string[] = [];
+        for (const word of words) {
+          if (!rows.length) {
+            rows.push(word);
+            continue;
+          }
+          const previous = rows.at(-1) ?? "";
+          if (`${previous} ${word}`.trim().length <= 92)
+            rows[rows.length - 1] = `${previous} ${word}`.trim();
+          else rows.push(word);
+        }
+        for (const row of rows.length ? rows : [""]) {
+          if (y < 55) {
+            page = pdf.addPage([595, 842]);
+            y = 800;
+          }
+          page.drawText(row, {
+            x: 42,
+            y,
+            size,
+            font: strong ? bold : regular,
+            color: rgb(0.08, 0.24, 0.4),
+          });
+          y -= size + 7;
+        }
+      };
+      line("VALHALLA - FICHA OFICIAL DE AVALIACAO", undefined, 17, true);
+      line("Equipe", session.slot.team.name, 12, true);
+      line("Categoria", session.slot.team.category.name);
+      line("Fase", session.slot.phase.name);
+      line("Mesa / palco", session.slot.station.name);
+      line("Horario", session.slot.scheduledAt.toLocaleString("pt-BR"));
+      line("Estado", session.state);
+      y -= 5;
+      line("RESPONSAVEIS", undefined, 12, true);
+      line("Operador", session.operatorName);
+      line("Anunciador", session.announcerName);
+      line("Pontuador", session.scorerName);
+      line("Tablet", session.terminalId);
+      if (session.judgeScores.length) {
+        y -= 5;
+        line("JURADOS", undefined, 12, true);
+        for (const judge of session.judgeScores) {
+          line(judge.judgeName, `${judge.total.toFixed(2)} pontos (${judge.role})`);
+          try {
+            for (const [key, value] of flatten(JSON.parse(judge.scorecard), "ficha"))
+              line(`  ${key}`, value, 8);
+          } catch {
+            line("  ficha", judge.scorecard, 8);
+          }
+        }
+        line("Consenso", session.consensusTotal?.toFixed(2));
+        line("Confirmado por", session.consensusConfirmedBy);
+      }
+      y -= 5;
+      line("RESULTADO REGISTRADO", undefined, 12, true);
+      for (const score of scores) line(`Coluna ${score.columnIndex + 1}`, score.value);
+      line("Decisao artistica", session.artisticDecision);
+      if (session.artisticDecisionReason) line("Fundamentacao", session.artisticDecisionReason);
+      y -= 5;
+      line("DADOS DA FICHA", undefined, 12, true);
+      try {
+        for (const [key, value] of flatten(JSON.parse(session.scorecard))) line(key, value);
+      } catch {
+        line("Conteudo", session.scorecard);
+      }
+      y -= 20;
+      line("Assinatura da equipe: __________________________________________");
+      y -= 12;
+      line("Assinatura da arbitragem: _____________________________________");
+      line("Gerada em", new Date().toLocaleString("pt-BR"));
+      await ctx.prisma.auditLog.create({
+        data: {
+          eventId: session.slot.eventId,
+          action: "SESSION_SCORECARD_PDF_EXPORTED",
+          entityType: "EvaluationSession",
+          entityId: session.id,
+          teamId: session.slot.teamId,
+          stationId: session.slot.stationId,
+          actorRole: ctx.user.role,
+        },
+      });
+      return Buffer.from(await pdf.save()).toString("base64");
+    }),
   exportResultsPdf: adminProcedure.input(z.string()).query(async ({ ctx, input: eventId }) => {
     await assertOwnEvent(ctx.user.eventId, eventId);
     const event = await ctx.prisma.event.findUniqueOrThrow({ where: { id: eventId } });
@@ -512,6 +690,12 @@ export const robustnessRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertOwnEvent(ctx.user.eventId, input.eventId);
       if (input.homologated) {
+        const rules = await validateEventRules(input.eventId, ctx.prisma);
+        if (!rules.approved)
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "As regras precisam estar validadas e homologadas antes dos resultados.",
+          });
         const open = await ctx.prisma.formalAppeal.count({
           where: { eventId: input.eventId, status: { in: ["OPEN", "UNDER_REVIEW"] } },
         });

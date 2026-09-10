@@ -6,10 +6,12 @@ import type { SessionUser } from "@/domain/entities/user";
 import { AuthService } from "@/application/services/auth.service";
 import { canStartPhase, hasVersionConflict } from "@/domain/entities/operation";
 import { generateAdvancedSchedule } from "@/domain/entities/scheduler";
+import { applyFormula } from "@/application/services/scoring.service";
 import { calculateArenaMaximum } from "@/domain/entities/ruleset";
 import {
   calculateArtisticScore,
   sumArtisticPresentationPenalties,
+  findArtisticTiebreakGroups,
   type ArtisticCard,
 } from "@/domain/entities/artistic";
 
@@ -515,6 +517,78 @@ export const operationRouter = router({
         },
       });
       return { created: generated.slots.length, conflicts: [] as string[] };
+    }),
+  generateArtisticTiebreakQueue: adminProcedure
+    .input(
+      z.object({
+        eventId: z.string(),
+        categoryId: z.string(),
+        phaseId: z.string(),
+        stationId: z.string(),
+        startsAt: z.string().datetime(),
+        intervalSeconds: z.number().int().min(60),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      assertSessionEvent(ctx.user, input.eventId);
+      const [category, phase, station] = await Promise.all([
+        ctx.prisma.category.findUnique({
+          where: { id: input.categoryId },
+          include: {
+            scoreColumns: { orderBy: { order: "asc" } },
+            teams: { include: { scores: true } },
+          },
+        }),
+        ctx.prisma.phase.findUnique({ where: { id: input.phaseId } }),
+        ctx.prisma.evaluationStation.findUnique({ where: { id: input.stationId } }),
+      ]);
+      if (!category || category.eventId !== input.eventId || category.type !== "ARTISTIC")
+        throw new Error("Categoria artística inválida.");
+      if (!phase || phase.eventId !== input.eventId || phase.type !== "EXTRA_ROUND")
+        throw new Error("Selecione uma fase de apresentação extra.");
+      if (!station || station.eventId !== input.eventId || station.type !== "STAGE")
+        throw new Error("Selecione um palco válido.");
+      const groups = findArtisticTiebreakGroups(
+        category.teams
+          .filter((team) =>
+            [0, 1, 2].every((index) => team.scores.some((score) => score.columnIndex === index)),
+          )
+          .map((team) => ({
+            teamId: team.id,
+            criteria: applyFormula(
+              category.scoringFormula,
+              category.scoreColumns.map(
+                (column) =>
+                  team.scores.find((score) => score.columnIndex === column.order)?.value ?? 0,
+              ),
+            ),
+          })),
+      );
+      const teamIds = groups.flat();
+      if (!teamIds.length) throw new Error("Nenhum empate completo exige apresentação extra.");
+      const existing = await ctx.prisma.scheduleSlot.count({
+        where: { phaseId: phase.id, teamId: { in: teamIds } },
+      });
+      if (existing) throw new Error("A fila de desempate já contém uma ou mais equipes empatadas.");
+      const startsAt = new Date(input.startsAt).getTime();
+      await ctx.prisma.scheduleSlot.createMany({
+        data: teamIds.map((teamId, index) => ({
+          eventId: input.eventId,
+          phaseId: phase.id,
+          stationId: station.id,
+          teamId,
+          scheduledAt: new Date(startsAt + index * input.intervalSeconds * 1000),
+          order: index,
+        })),
+      });
+      await audit(ctx, {
+        eventId: input.eventId,
+        action: "ARTISTIC_TIEBREAK_QUEUE_GENERATED",
+        entityType: "Phase",
+        entityId: phase.id,
+        after: { groups, stationId: station.id, startsAt: input.startsAt },
+      });
+      return { created: teamIds.length, groups };
     }),
   exportSchedule: adminProcedure
     .input(

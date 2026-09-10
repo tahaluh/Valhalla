@@ -58,3 +58,13 @@ export function sumArtisticPresentationPenalties(scorecards: Array<string | null
     }
   }, 0);
 }
+
+export function findArtisticTiebreakGroups(rows: Array<{ teamId: string; criteria: number[] }>) {
+  const groups = new Map<string, string[]>();
+  for (const row of rows) {
+    // Pontuação final, soma das apresentações e penalidades. A nota extra é o desempate seguinte.
+    const key = JSON.stringify(row.criteria.slice(0, 3));
+    groups.set(key, [...(groups.get(key) ?? []), row.teamId]);
+  }
+  return [...groups.values()].filter((teamIds) => teamIds.length > 1);
+}

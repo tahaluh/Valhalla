@@ -21,7 +21,9 @@
     "db:test-seed": "prisma migrate deploy && npm run prisma:seed",
     "db:push": "prisma db push",
     "type-check": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@prisma/client": "^6.7.0",
@@ -55,6 +57,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.9.0",
     "@types/react": "^19.0.0",

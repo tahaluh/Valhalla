@@ -1,6 +1,13 @@
-# Valhalla Product Roadmap
+# Valhalla — roadmap e estado de implementação
 
-Roadmap de produto para transpor o ecossistema `Tournamenter` + `TournamenterApp` + `tournamenter-obr` para o `Valhalla`, já assumindo que o `Valhalla` é um sistema específico da OBR e não um host genérico com plugins.
+Documento de rastreabilidade entre o ecossistema `Tournamenter` + `TournamenterApp` + `tournamenter-obr` e as funcionalidades implementadas no `Valhalla`. Os estados abaixo representam o código atual, não apenas o planejamento inicial.
+
+## Resumo atual
+
+- As fases 1, 2 e 3 estão implementadas para Prática e Artística presencial.
+- O sistema possui operação por mesa, sincronização com o Olímpo, agenda avançada, telões, auditoria, backup, diagnóstico e fila offline.
+- O catálogo formal de temporadas continua parcial: há rulesets versionados por arena e homologação por evento, mas ainda não existe uma biblioteca central de regulamentos reutilizáveis.
+- Instalação de plugins em runtime, brackets genéricos e um gerenciador desktop multi-instância permanecem deliberadamente fora do escopo.
 
 ## Objetivo
 
@@ -213,7 +220,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:admin`, `priority:p0`
 - Fonte: `Valhalla` atual + `Tournamenter` core
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Permitir criar e inicializar um evento OBR completo, com identidade do evento, datas, local, senhas/papéis e configurações iniciais obrigatórias.
 - Valor:
@@ -229,7 +236,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:teams`, `priority:p0`
 - Fonte: `Tournamenter/models/Team.js`, `Tournamenter/controllers/Team.js`
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Disponibilizar CRUD completo de equipes com dados usados pela OBR e estados operacionais como presença confirmada.
 - Valor:
@@ -245,7 +252,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:integrations`, `priority:p0`
 - Fonte: `tournamenter-obr/public/tournamenter-obr/scripts_config/importar.js`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Importar equipes do Olimpo para o evento, calculando diferenças antes de aplicar mudanças no banco local.
 - Valor:
@@ -261,7 +268,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:integrations`, `priority:p0`
 - Fonte: `tournamenter-obr/SyncModule.js`, `scripts_config/importar.js`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Guardar em cada equipe os metadados exigidos pelo ecossistema OBR, como `olimpoId`, `stepId` e `token`.
 - Valor:
@@ -275,7 +282,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:scoring`, `priority:p0`
 - Fonte: `tournamenter-obr/public/tournamenter-obr/scripts/controllers.js`, `views/scorer.html`
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Implementar o fluxo completo do árbitro para escolher categoria, equipe, arena, lançar score, controlar tempo e persistir a rodada.
 - Valor:
@@ -291,7 +298,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:rules`, `priority:p0`
 - Fonte: `tournamenter-obr/public/tournamenter-obr/scripts/scorers.js`, `views/rescue_scorer_*`
-- Status atual: ausente
+- Status atual: parcial — rulesets possuem nome, versão e snapshot por arena; falta catálogo central reutilizável
 - Descrição:
   Modelar regulamentos versionados para Rescue, separados por ano e por etapa regional/nacional, sem exigir duplicação manual de telas a cada temporada.
 - Valor:
@@ -307,7 +314,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:scoring`, `priority:p0`
 - Fonte: `tournamenter-obr/sorters/artistica2025.js`, convenções de colunas do plugin
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Consolidar o fluxo de pontuação da modalidade artística com critérios, colunas, cálculo final e desempates específicos.
 - Valor:
@@ -321,7 +328,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:rules`, `priority:p0`
 - Fonte: `Tournamenter/models/Table.js`, `tournamenter-obr/sorters/*.js`
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Evoluir o mecanismo de scoring para suportar fórmulas, desempates e regras oficiais sem espalhar lógica pela interface.
 - Valor:
@@ -335,7 +342,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:scoring`, `priority:p0`
 - Fonte: `Tournamenter/models/Scores.js`, `controllers/Scores.js`
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Armazenar não só o valor final de cada coluna, mas também a estrutura detalhada da pontuação por missão/tentativa.
 - Valor:
@@ -349,7 +356,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:scoring`, `priority:p1`
 - Fonte: `controllers.js` do plugin OBR
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Permitir abrir uma nota existente, revisar dados e substituir a pontuação de forma controlada.
 - Valor:
@@ -363,7 +370,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:audit`, `priority:p1`
 - Fonte: necessidade operacional derivada do legado
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Registrar quem lançou, editou ou reenviou cada nota, quando isso ocorreu e quais valores mudaram.
 - Valor:
@@ -376,7 +383,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:integrations`, `priority:p0`
 - Fonte: `tournamenter-obr/SyncModule.js`, `scripts_config/exportar.js`
-- Status atual: ausente
+- Status atual: concluído; homologação final depende de credenciais reais do serviço
 - Descrição:
   Enviar periodicamente ou sob demanda os resultados para o sistema oficial do Olimpo.
 - Valor:
@@ -390,7 +397,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:integrations`, `priority:p1`
 - Fonte: `SyncModule.js`, `obr-config.ejs`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Exibir o estado atual da sincronização, último sucesso, falhas recentes e mensagens de diagnóstico.
 - Valor:
@@ -404,7 +411,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:scheduling`, `priority:p0`
 - Fonte: `obr-rounds.ejs`, `scripts_rounds/app.js`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Gerar automaticamente as tabelas de horário dos 3 rounds com base em duração, arenas, dificuldades e pausas.
 - Valor:
@@ -418,7 +425,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:scheduling`, `priority:p1`
 - Fonte: `scripts_rounds/app.js`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Exportar os horários gerados em CSV, markdown para view pública e modo de impressão.
 - Valor:
@@ -432,7 +439,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:competition`, `priority:p1`
 - Fonte: `obr-desafio.ejs`, `scripts_desafio/desafio.js`
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Disponibilizar fluxo para gerar e registrar desafios surpresa por equipe, com controle de geração única e visualização posterior.
 - Valor:
@@ -446,7 +453,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:public-display`, `priority:p1`
 - Fonte: `Tournamenter/modules/pageview-*`, `controllers/View.js`
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Criar modos públicos específicos da OBR para TVs, telões e páginas abertas ao público.
 - Valor:
@@ -462,7 +469,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:public-display`, `priority:p2`
 - Fonte: `Tournamenter/modules/pageview-message`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Permitir publicar avisos operacionais, instruções e comunicados em telas públicas.
 - Valor:
@@ -476,7 +483,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:branding`, `priority:p2`
 - Fonte: `Tournamenter/config/config.js`, `controllers/Api.js`
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Permitir logo, nome curto, nome público e identidade básica do evento OBR.
 - Valor:
@@ -489,7 +496,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:exports`, `priority:p1`
 - Fonte: `Tournamenter/controllers/Table.js`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Exportar resultados e rankings em CSV com codificação apropriada para uso em planilhas.
 - Valor:
@@ -503,7 +510,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:ops`, `priority:p1`
 - Fonte: `Tournamenter/helpers/Backup.js`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Permitir backup manual e automático, além de restore controlado do banco do evento.
 - Valor:
@@ -517,7 +524,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:ops`, `priority:p1`
 - Fonte: visão combinada de `Tournamenter` + `TournamenterApp`
-- Status atual: parcial
+- Status atual: concluído — shell PWA, rascunhos e fila ordenada de comandos operacionais
 - Descrição:
   Consolidar a experiência de uso local em rede interna do evento, com descoberta simples de endereço, persistência local e instruções de deployment.
 - Valor:
@@ -531,7 +538,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:ops`, `priority:p2`
 - Fonte: `TournamenterApp`
-- Status atual: ausente
+- Status atual: concluído para Node/Docker; aplicativo desktop separado permanece fora do escopo
 - Descrição:
   Definir uma forma oficial de distribuição do `Valhalla` para uso em eventos: Docker, pacote desktop, instalador local ou appliance.
 - Valor:
@@ -544,7 +551,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:arena`, `priority:p1`
 - Fonte: `Valhalla` atual + plugin OBR
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Evoluir o cadastro de arenas para refletir melhor os elementos do percurso e apoiar tanto pontuação quanto planejamento operacional.
 - Valor:
@@ -557,7 +564,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:secretariat`, `priority:p1`
 - Fonte: necessidades OBR e lacunas do legado
-- Status atual: parcial
+- Status atual: concluído
 - Descrição:
   Consolidar uma dashboard de secretaria para check-in, conferência de cadastro, filtros por categoria, acompanhamento de prontidão e suporte à operação.
 - Valor:
@@ -570,7 +577,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:ux`, `priority:p2`
 - Fonte: `ManualOBRTournamenter.pdf`, `obr-home.ejs`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Disponibilizar ajuda contextual e manual operacional dentro do próprio `Valhalla`.
 - Valor:
@@ -583,7 +590,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:ops`, `priority:p2`
 - Fonte: logs e monitoramento do `TournamenterApp`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Exibir estado do banco, fila de sync, erros recentes e informações úteis de diagnóstico operacional.
 - Valor:
@@ -596,7 +603,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:rules`, `priority:p1`
 - Fonte: prática atual do plugin OBR
-- Status atual: ausente
+- Status atual: parcial — homologação e snapshots existem; catálogo central por temporada ainda não
 - Descrição:
   Criar uma entidade formal de regulamento/temporada para vincular categorias, fórmulas, colunas e telas de score.
 - Valor:
@@ -609,7 +616,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:quality`, `priority:p1`
 - Fonte: risco recorrente identificado no legado
-- Status atual: ausente
+- Status atual: concluído para OBR 2026, incluindo domínio, API e navegador
 - Descrição:
   Garantir que fórmulas, desempates e campos de score por temporada tenham testes automatizados.
 - Valor:
@@ -622,7 +629,7 @@ Cada item abaixo já está no formato adequado para abrir issue com label `featu
 
 - Labels sugeridas: `feature-requested`, `area:ux`, `priority:p2`
 - Fonte: `tournamenter-obr/public/tournamenter-obr/obr-home.ejs`
-- Status atual: ausente
+- Status atual: concluído
 - Descrição:
   Criar uma home operacional para o staff com atalhos claros para pontuação, secretaria, rounds, desafio surpresa, sync e ajuda.
 - Valor:

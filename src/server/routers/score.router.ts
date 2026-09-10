@@ -57,6 +57,14 @@ async function writeScore(ctx: Context & { user: SessionUser }, input: ScoreWrit
       },
     },
   });
+  // Reenvios após queda de rede são idempotentes e não constituem correção de nota.
+  if (
+    existingForApproval &&
+    existingForApproval.value === input.value &&
+    existingForApproval.data === input.data &&
+    (existingForApproval.arenaId ?? undefined) === input.arenaId
+  )
+    return existingForApproval;
   // Toda sobrescrita deve ser motivada; no tablet ela também exige aprovação administrativa.
   if (requiresAdminCorrection(!!existingForApproval)) {
     if (!input.reason)

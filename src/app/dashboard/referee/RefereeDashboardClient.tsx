@@ -17,6 +17,14 @@ import {
   normalizeArtisticExtraScore,
   type ArtisticCard,
 } from "@/domain/entities/artistic";
+import {
+  enqueueOfflineCommand,
+  markOfflineCommandFailure,
+  readOfflineCommands,
+  removeOfflineCommand,
+  updateOfflineCommandPayload,
+  type OfflineCommand,
+} from "@/lib/offline-queue";
 
 const EMPTY_CARD: RescueScorecard = {
   startTile: false,
@@ -69,6 +77,46 @@ type TabletPreferences = {
   announcerName?: string;
   scorerName?: string;
 };
+type TransitionPayload = {
+  slotId: string;
+  state: PendingAction["state"] | "FINALIZED";
+  terminalId?: string;
+  operatorName: string;
+  announcerName: string;
+  scorerName: string;
+  expectedVersion?: number;
+  reason?: string;
+  forceMaximumTime?: boolean;
+};
+type FinalizePayload = {
+  stage?: "SAVE" | "SCORE" | "TRANSITION";
+  sessionVersion?: number;
+  save: {
+    slotId: string;
+    scorecard: string;
+    terminalId?: string;
+    operatorName: string;
+    announcerName: string;
+    scorerName: string;
+    expectedVersion?: number;
+    artisticDecision?: "NORMAL" | "DISQUALIFIED" | "ORIGINALITY" | "PROHIBITED_CONTENT";
+    artisticDecisionReason?: string;
+  };
+  score: {
+    teamId: string;
+    categoryId: string;
+    arenaId?: string;
+    scores: Array<{ columnIndex: number; value: number; data: string }>;
+  };
+  transition: Omit<TransitionPayload, "expectedVersion">;
+};
+
+function isConnectionFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /failed to fetch|fetch failed|networkerror|network request failed|load failed/i.test(
+    message,
+  );
+}
 
 export default function RefereeDashboardClient({ eventId }: { eventId: string }) {
   const router = useRouter();
@@ -112,6 +160,9 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     null,
   );
   const [offlineRetry, setOfflineRetry] = useState(0);
+  const [offlineCommands, setOfflineCommands] = useState<OfflineCommand[]>([]);
+  const [flushingOffline, setFlushingOffline] = useState(false);
+  const flushingOfflineRef = useRef(false);
   const [selectedJudge, setSelectedJudge] = useState("");
   const [artisticDecision, setArtisticDecision] = useState<
     "NORMAL" | "DISQUALIFIED" | "ORIGINALITY" | "PROHIBITED_CONTENT"
@@ -222,6 +273,68 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     },
     onError: (error) => setMessage(error.message),
   });
+
+  function queueOfflineCommand(kind: OfflineCommand["kind"], payload: unknown) {
+    const commands = enqueueOfflineCommand(window.localStorage, {
+      id: crypto.randomUUID(),
+      eventId,
+      kind,
+      payload,
+    });
+    setOfflineCommands(commands.filter((command) => command.eventId === eventId));
+  }
+
+  async function runOfflineCommand(command: OfflineCommand) {
+    if (command.kind === "TRANSITION") {
+      await transition.mutateAsync(command.payload as TransitionPayload);
+      return;
+    }
+    const payload = command.payload as FinalizePayload;
+    if (!payload.stage || payload.stage === "SAVE") {
+      const session = await saveCard.mutateAsync(payload.save);
+      payload.stage = "SCORE";
+      payload.sessionVersion = session.version;
+      updateOfflineCommandPayload(window.localStorage, command.id, payload);
+    }
+    if (payload.stage === "SCORE") {
+      await submitScore.mutateAsync(payload.score);
+      payload.stage = "TRANSITION";
+      updateOfflineCommandPayload(window.localStorage, command.id, payload);
+    }
+    await transition.mutateAsync({
+      ...payload.transition,
+      expectedVersion: payload.sessionVersion,
+    });
+  }
+
+  async function flushOfflineCommands() {
+    if (flushingOfflineRef.current || !navigator.onLine) return;
+    flushingOfflineRef.current = true;
+    setFlushingOffline(true);
+    const commands = readOfflineCommands(window.localStorage, eventId);
+    for (const command of commands) {
+      try {
+        await runOfflineCommand(command);
+        setOfflineCommands(
+          removeOfflineCommand(window.localStorage, command.id).filter(
+            (item) => item.eventId === eventId,
+          ),
+        );
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        setOfflineCommands(
+          markOfflineCommandFailure(window.localStorage, command.id, reason).filter(
+            (item) => item.eventId === eventId,
+          ),
+        );
+        setMessage(`A fila offline parou para revisão: ${reason}`);
+        break;
+      }
+    }
+    flushingOfflineRef.current = false;
+    setFlushingOffline(false);
+    await queueQuery.refetch();
+  }
   const logout = trpc.auth.logout.useMutation({ onSuccess: () => router.push("/login") });
 
   useEffect(() => {
@@ -243,6 +356,15 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     } catch {
       // Preferências inválidas não impedem uma nova configuração do tablet.
     }
+    setOfflineCommands(readOfflineCommands(window.localStorage, eventId));
+  }, [eventId]);
+  useEffect(() => {
+    const flush = () => void flushOfflineCommands();
+    window.addEventListener("online", flush);
+    if (navigator.onLine && readOfflineCommands(window.localStorage, eventId).length) flush();
+    return () => window.removeEventListener("online", flush);
+    // As mutations são estáveis; reconectar ou trocar de evento dispara o processamento da fila.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -459,19 +581,26 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
   async function executePendingAction() {
     if (!pendingAction || !current || !officialsReady) return;
     const action = pendingAction;
+    const transitionPayload: TransitionPayload = {
+      slotId: current.id,
+      state: action.state,
+      terminalId,
+      operatorName,
+      announcerName,
+      scorerName,
+      expectedVersion: draftVersion.current ?? undefined,
+      reason: action.reason,
+      forceMaximumTime: action.forceMaximumTime,
+    };
+    if (!navigator.onLine) {
+      queueOfflineCommand("TRANSITION", transitionPayload);
+      setPendingAction(null);
+      setMessage(`${action.title} guardado. Será enviado quando a conexão voltar.`);
+      return;
+    }
     setMessage(`${action.title}...`);
     try {
-      await transition.mutateAsync({
-        slotId: current.id,
-        state: action.state,
-        terminalId,
-        operatorName,
-        announcerName,
-        scorerName,
-        expectedVersion: draftVersion.current ?? undefined,
-        reason: action.reason,
-        forceMaximumTime: action.forceMaximumTime,
-      });
+      await transition.mutateAsync(transitionPayload);
       await queueQuery.refetch();
       if (action.state === "ABSENT" || action.state === "RESCHEDULED") {
         setSlotId("");
@@ -484,6 +613,11 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       setMessage(`${action.title} concluído.`);
     } catch (error) {
       setPendingAction(null);
+      if (!navigator.onLine || isConnectionFailure(error)) {
+        queueOfflineCommand("TRANSITION", transitionPayload);
+        setMessage(`${action.title} guardado. Será enviado quando a conexão voltar.`);
+        return;
+      }
       setMessage(
         error instanceof Error
           ? `Não foi possível concluir: ${error.message}`
@@ -493,20 +627,31 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
   }
   async function pauseImmediately() {
     if (!current || !officialsReady || current.session?.state !== "IN_PROGRESS") return;
+    const transitionPayload: TransitionPayload = {
+      slotId: current.id,
+      state: "PAUSED",
+      terminalId,
+      operatorName,
+      announcerName,
+      scorerName,
+      expectedVersion: draftVersion.current ?? undefined,
+    };
+    if (!navigator.onLine) {
+      queueOfflineCommand("TRANSITION", transitionPayload);
+      setMessage("Pausa guardada. Será enviada quando a conexão voltar.");
+      return;
+    }
     setMessage("Pausando cronômetro...");
     try {
-      await transition.mutateAsync({
-        slotId: current.id,
-        state: "PAUSED",
-        terminalId,
-        operatorName,
-        announcerName,
-        scorerName,
-        expectedVersion: draftVersion.current ?? undefined,
-      });
+      await transition.mutateAsync(transitionPayload);
       await queueQuery.refetch();
       setMessage("Cronômetro pausado.");
     } catch (error) {
+      if (!navigator.onLine || isConnectionFailure(error)) {
+        queueOfflineCommand("TRANSITION", transitionPayload);
+        setMessage("Pausa guardada. Será enviada quando a conexão voltar.");
+        return;
+      }
       setMessage(
         error instanceof Error
           ? `Não foi possível pausar: ${error.message}`
@@ -566,7 +711,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       current.phase.type === "PRACTICE_ROUND"
         ? { card: effectiveRescueCard, rules, result }
         : { artisticCard: effectiveArtisticCard, result: artistic };
-    const session = await saveCard.mutateAsync({
+    const savePayload = {
       slotId: current.id,
       scorecard: JSON.stringify(payload),
       expectedVersion: draftVersion.current ?? undefined,
@@ -579,7 +724,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       reason: isCorrection ? correctionReason : undefined,
       artisticDecision: isArtistic ? artisticDecision : undefined,
       artisticDecisionReason: isArtistic ? artisticDecisionReason || undefined : undefined,
-    });
+    };
     const scoreValue =
       current.phase.type === "PRACTICE_ROUND"
         ? result.total
@@ -631,7 +776,7 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
           ]
         : []),
     ];
-    await submitScore.mutateAsync({
+    const scorePayload = {
       teamId: current.teamId,
       categoryId: current.team.categoryId,
       arenaId: selectedStation?.arenaId ?? undefined,
@@ -639,17 +784,67 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       adminPassword: isCorrection ? adminPassword : undefined,
       adminAuthorizerName: isCorrection ? adminAuthorizerName : undefined,
       reason: isCorrection ? correctionReason : undefined,
-    });
-    await transition.mutateAsync({
+    };
+    const finalTransitionPayload = {
       slotId: current.id,
       state: "FINALIZED",
       terminalId,
       operatorName,
       announcerName,
       scorerName,
-      expectedVersion: session.version,
       reason: correctionReason || undefined,
-    });
+    } satisfies Omit<TransitionPayload, "expectedVersion">;
+    if (!navigator.onLine && !isCorrection) {
+      queueOfflineCommand("FINALIZE", {
+        save: savePayload,
+        score: {
+          teamId: scorePayload.teamId,
+          categoryId: scorePayload.categoryId,
+          arenaId: scorePayload.arenaId,
+          scores: scorePayload.scores,
+        },
+        transition: finalTransitionPayload,
+      } satisfies FinalizePayload);
+      setMessage("Finalização guardada neste tablet. Será enviada quando a conexão voltar.");
+      setSlotId("");
+      setScreen("queue");
+      setOfficialsConfirmed(false);
+      return;
+    }
+    let stage: FinalizePayload["stage"] = "SAVE";
+    let sessionVersion: number | undefined;
+    try {
+      const session = await saveCard.mutateAsync(savePayload);
+      sessionVersion = session.version;
+      stage = "SCORE";
+      await submitScore.mutateAsync(scorePayload);
+      stage = "TRANSITION";
+      await transition.mutateAsync({ ...finalTransitionPayload, expectedVersion: session.version });
+    } catch (error) {
+      if (!isCorrection && (!navigator.onLine || isConnectionFailure(error))) {
+        queueOfflineCommand("FINALIZE", {
+          stage,
+          sessionVersion,
+          save: savePayload,
+          score: {
+            teamId: scorePayload.teamId,
+            categoryId: scorePayload.categoryId,
+            arenaId: scorePayload.arenaId,
+            scores: scorePayload.scores,
+          },
+          transition: finalTransitionPayload,
+        } satisfies FinalizePayload);
+        setMessage(
+          "Conexão interrompida. A finalização continuará automaticamente do ponto salvo.",
+        );
+        setSlotId("");
+        setScreen("queue");
+        setOfficialsConfirmed(false);
+        return;
+      }
+      setMessage(error instanceof Error ? error.message : "Não foi possível finalizar a ficha.");
+      return;
+    }
     await Promise.all([queueQuery.refetch(), utils.score.getRanking.invalidate()]);
     setSlotId("");
     setScreen("queue");
@@ -774,6 +969,22 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
           <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
             {message}
           </p>
+        )}
+        {offlineCommands.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+            <span>
+              <strong>{offlineCommands.length} ação(ões) aguardando envio.</strong> A ordem foi
+              preservada neste tablet.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={flushingOffline || (typeof navigator !== "undefined" && !navigator.onLine)}
+              onClick={() => void flushOfflineCommands()}
+            >
+              {flushingOffline ? "Enviando…" : "Enviar agora"}
+            </Button>
+          </div>
         )}
 
         {screen === "setup" && (

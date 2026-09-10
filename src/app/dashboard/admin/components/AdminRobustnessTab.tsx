@@ -15,6 +15,8 @@ export function AdminRobustnessTab({ eventId }: { eventId: string }) {
   const csvQuery = trpc.robustness.exportResultsCsv.useQuery(eventId, { enabled: false });
   const pdfQuery = trpc.robustness.exportResultsPdf.useQuery(eventId, { enabled: false });
   const { data: snapshots = [] } = trpc.robustness.listSnapshots.useQuery(eventId);
+  const { data: rulesValidation, refetch: refreshRules } =
+    trpc.robustness.validateRules.useQuery(eventId);
   const { data: diagnostics, refetch: refreshDiagnostics } = trpc.robustness.diagnostics.useQuery(
     eventId,
     { refetchInterval: 10000 },
@@ -42,6 +44,11 @@ export function AdminRobustnessTab({ eventId }: { eventId: string }) {
   const homologate = trpc.robustness.homologate.useMutation({
     onSuccess: () => utils.event.getById.invalidate(eventId),
   });
+  const approveRules = trpc.robustness.approveRules.useMutation({
+    onSuccess: async () => {
+      await Promise.all([refreshRules(), utils.event.getById.invalidate(eventId)]);
+    },
+  });
   const syncOlimpo = trpc.robustness.syncOlimpo.useMutation({
     onSuccess: () => utils.event.getById.invalidate(eventId),
   });
@@ -51,6 +58,14 @@ export function AdminRobustnessTab({ eventId }: { eventId: string }) {
   const [decisions, setDecisions] = useState<Record<string, string>>({});
   const [form, setForm] = useState({ teamId: "", title: "", description: "", deadlineAt: "" });
   const [backupOperator, setBackupOperator] = useState("Administração");
+  const [rulesApproval, setRulesApproval] = useState({
+    approvedBy: "",
+    reference: "Manual OBR 2026 v1.2",
+    notes: "",
+    organizerApproved: false,
+    normalizationApproved: false,
+    surpriseApproved: false,
+  });
 
   async function download(kind: "backup" | "csv") {
     const result = await (kind === "backup" ? backupQuery.refetch() : csvQuery.refetch());
@@ -312,6 +327,115 @@ export function AdminRobustnessTab({ eventId }: { eventId: string }) {
                 <p className="mt-2 text-sm text-red-800">{restore.error.message}</p>
               )}
             </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Homologação das regras</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              {rulesValidation?.checks.map((check) => (
+                <div
+                  key={check.key}
+                  className={`rounded-lg border p-3 text-sm ${
+                    check.ok
+                      ? "border-green-200 bg-green-50 text-green-900"
+                      : "border-red-200 bg-red-50 text-red-900"
+                  }`}
+                >
+                  <strong>
+                    {check.ok ? "✓" : "✕"} {check.label}
+                  </strong>
+                  <p className="text-xs">{check.detail || "Sem dados"}</p>
+                </div>
+              ))}
+            </div>
+            <div
+              className={`rounded-lg p-3 text-sm ${
+                rulesValidation?.approved
+                  ? "border border-green-300 bg-green-50 text-green-900"
+                  : "border border-amber-300 bg-amber-50 text-amber-950"
+              }`}
+            >
+              {rulesValidation?.approved
+                ? `Regras homologadas por ${rulesValidation.approval.by} · ${rulesValidation.approval.reference}`
+                : "Configuração atual ainda não possui homologação válida."}
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <Input
+                placeholder="Responsável pela homologação"
+                value={rulesApproval.approvedBy}
+                onChange={(event) =>
+                  setRulesApproval((old) => ({ ...old, approvedBy: event.target.value }))
+                }
+              />
+              <Input
+                placeholder="Versão/referência do regulamento"
+                value={rulesApproval.reference}
+                onChange={(event) =>
+                  setRulesApproval((old) => ({ ...old, reference: event.target.value }))
+                }
+              />
+              <textarea
+                className="min-h-20 rounded-md border p-3 md:col-span-2"
+                placeholder="Observações da organização"
+                value={rulesApproval.notes}
+                onChange={(event) =>
+                  setRulesApproval((old) => ({ ...old, notes: event.target.value }))
+                }
+              />
+            </div>
+            {[
+              ["organizerApproved", "A organização conferiu as fichas e critérios oficiais."],
+              ["normalizationApproved", "A organização aprovou o fator entre palcos."],
+              ["surpriseApproved", "A organização aprovou os desafios surpresa deste evento."],
+            ].map(([key, label]) => (
+              <label key={key} className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={rulesApproval[key as keyof typeof rulesApproval] === true}
+                  onChange={(event) =>
+                    setRulesApproval((old) => ({ ...old, [key]: event.target.checked }))
+                  }
+                />
+                {label}
+              </label>
+            ))}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => refreshRules()}>
+                Revalidar configuração
+              </Button>
+              <Button
+                disabled={
+                  approveRules.isPending ||
+                  !rulesValidation?.valid ||
+                  !rulesApproval.approvedBy.trim() ||
+                  !rulesApproval.reference.trim() ||
+                  !rulesApproval.organizerApproved ||
+                  !rulesApproval.normalizationApproved ||
+                  !rulesApproval.surpriseApproved
+                }
+                onClick={() =>
+                  approveRules.mutate({
+                    eventId,
+                    approvedBy: rulesApproval.approvedBy,
+                    reference: rulesApproval.reference,
+                    notes: rulesApproval.notes || undefined,
+                    organizerApproved: true,
+                    normalizationApproved: true,
+                    surpriseApproved: true,
+                  })
+                }
+              >
+                Homologar regras atuais
+              </Button>
+            </div>
+            {(approveRules.error || !rulesValidation?.valid) && (
+              <p className="text-sm text-red-700">
+                {approveRules.error?.message || "Resolva os itens marcados antes da homologação."}
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card>

@@ -53,6 +53,9 @@ export function AdminOperationsTab({
   const generateAdvanced = trpc.operation.generateAdvancedQueue.useMutation({
     onSuccess: invalidate,
   });
+  const generateTiebreak = trpc.operation.generateArtisticTiebreakQueue.useMutation({
+    onSuccess: invalidate,
+  });
   const createBlackout = trpc.operation.createBlackout.useMutation({
     onSuccess: () => utils.operation.listBlackouts.invalidate(eventId),
   });
@@ -73,6 +76,7 @@ export function AdminOperationsTab({
   const assignSurprise = trpc.operation.setSurpriseAssignment.useMutation({
     onSuccess: invalidate,
   });
+  const exportSessionPdf = trpc.robustness.exportSessionScorecardPdf.useMutation();
   const saveSurpriseBank = trpc.operation.setSurpriseChallengeBank.useMutation({
     onSuccess: () => utils.operation.getSurpriseChallengeBank.invalidate(eventId),
   });
@@ -107,6 +111,13 @@ export function AdminOperationsTab({
     starts: ["", "", ""],
   });
   const [blackout, setBlackout] = useState({ name: "Almoço", startsAt: "", endsAt: "" });
+  const [tiebreak, setTiebreak] = useState({
+    categoryId: "",
+    phaseId: "",
+    stationId: "",
+    startsAt: "",
+    intervalMinutes: 10,
+  });
   const nextSequence = useMemo(
     () => Math.max(0, ...phases.map((item) => item.sequence)) + 1,
     [phases],
@@ -136,6 +147,16 @@ export function AdminOperationsTab({
     link.href = url;
     link.download = `horarios-obr-${scheduleExportPhase || "completo"}.csv`;
     link.click();
+    URL.revokeObjectURL(url);
+  }
+  async function downloadSessionPdf(sessionId: string, teamName: string) {
+    const data = await exportSessionPdf.mutateAsync(sessionId);
+    const bytes = Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `ficha-${teamName.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}.pdf`;
+    anchor.click();
     URL.revokeObjectURL(url);
   }
   useEffect(() => {
@@ -656,6 +677,106 @@ export function AdminOperationsTab({
       </Card>
       <Card>
         <CardHeader>
+          <CardTitle>Desempate automático da Artística</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Localiza equipes empatadas após nota final, soma das apresentações e penalidades, e cria
+            a fila da apresentação extra.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-5">
+            <select
+              className="h-10 rounded-md border px-3"
+              value={tiebreak.categoryId}
+              onChange={(event) =>
+                setTiebreak((old) => ({ ...old, categoryId: event.target.value }))
+              }
+            >
+              <option value="">Categoria artística…</option>
+              {categories
+                .filter((category) => category.type === "ARTISTIC")
+                .map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+            </select>
+            <select
+              className="h-10 rounded-md border px-3"
+              value={tiebreak.phaseId}
+              onChange={(event) => setTiebreak((old) => ({ ...old, phaseId: event.target.value }))}
+            >
+              <option value="">Apresentação extra…</option>
+              {phases
+                .filter((phase) => phase.type === "EXTRA_ROUND")
+                .map((phase) => (
+                  <option key={phase.id} value={phase.id}>
+                    {phase.name}
+                  </option>
+                ))}
+            </select>
+            <select
+              className="h-10 rounded-md border px-3"
+              value={tiebreak.stationId}
+              onChange={(event) =>
+                setTiebreak((old) => ({ ...old, stationId: event.target.value }))
+              }
+            >
+              <option value="">Palco…</option>
+              {stations
+                .filter((station) => station.type === "STAGE")
+                .map((station) => (
+                  <option key={station.id} value={station.id}>
+                    {station.name}
+                  </option>
+                ))}
+            </select>
+            <input
+              className="h-10 rounded-md border px-3"
+              type="datetime-local"
+              value={tiebreak.startsAt}
+              onChange={(event) => setTiebreak((old) => ({ ...old, startsAt: event.target.value }))}
+            />
+            <NumberInput
+              label="Intervalo (min)"
+              value={tiebreak.intervalMinutes}
+              onChange={(value) => setTiebreak((old) => ({ ...old, intervalMinutes: value }))}
+            />
+          </div>
+          <Button
+            disabled={
+              generateTiebreak.isPending ||
+              !tiebreak.categoryId ||
+              !tiebreak.phaseId ||
+              !tiebreak.stationId ||
+              !tiebreak.startsAt
+            }
+            onClick={() =>
+              generateTiebreak.mutate({
+                eventId,
+                categoryId: tiebreak.categoryId,
+                phaseId: tiebreak.phaseId,
+                stationId: tiebreak.stationId,
+                startsAt: new Date(tiebreak.startsAt).toISOString(),
+                intervalSeconds: tiebreak.intervalMinutes * 60,
+              })
+            }
+          >
+            Gerar fila das equipes empatadas
+          </Button>
+          {generateTiebreak.data && (
+            <p className="text-sm text-green-700">
+              {generateTiebreak.data.created} equipe(s) adicionada(s) em{" "}
+              {generateTiebreak.data.groups.length} grupo(s) de empate.
+            </p>
+          )}
+          {generateTiebreak.error && (
+            <p className="text-sm text-red-700">{generateTiebreak.error.message}</p>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
           <CardTitle>Pausas e períodos indisponíveis</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -880,6 +1001,15 @@ export function AdminOperationsTab({
                   <span className="mr-2 rounded bg-slate-100 px-2 py-1 text-xs">
                     {slot.session?.state ?? slot.status}
                   </span>
+                  {slot.session && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => downloadSessionPdf(slot.session!.id, slot.team.name)}
+                    >
+                      Ficha PDF
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"

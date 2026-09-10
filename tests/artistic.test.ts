@@ -4,6 +4,7 @@ import {
   calculateArtisticScore,
   normalizeArtisticExtraScore,
   sumArtisticPresentationPenalties,
+  findArtisticTiebreakGroups,
 } from "../src/domain/entities/artistic";
 
 test("servidor pode recalcular a ficha artística sem confiar no total do navegador", () => {
@@ -26,6 +27,17 @@ test("servidor pode recalcular a ficha artística sem confiar no total do navega
       sustainability: 0,
     }).total,
     96,
+  );
+});
+
+test("desempate automático considera os critérios anteriores à rodada extra", () => {
+  assert.deepEqual(
+    findArtisticTiebreakGroups([
+      { teamId: "a", criteria: [90, -150, 3, -70] },
+      { teamId: "b", criteria: [90, -150, 3, -80] },
+      { teamId: "c", criteria: [89, -160, 0, 0] },
+    ]),
+    [["a", "b"]],
   );
 });
 

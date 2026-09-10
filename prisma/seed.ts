@@ -125,7 +125,7 @@ async function main() {
     {
       name: "Arena Verde",
       difficulty: "MEDIUM",
-      tiles: [4, 5, 5, 3],
+      tiles: [4, 5, 5, 1],
       seesaws: 1,
       intersections: 1,
       obstacles: 2,

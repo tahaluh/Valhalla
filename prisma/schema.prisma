@@ -48,6 +48,11 @@ model Event {
   activePublicationBatchId  String?
   autoBackupEnabled         Boolean   @default(false)
   backupIntervalMinutes     Int       @default(10)
+  rulesValidatedAt          DateTime?
+  rulesValidatedBy          String?
+  rulesValidationReference  String?
+  rulesValidationNotes      String?
+  rulesValidationHash       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -200,19 +205,19 @@ model EvaluationStation {
 }
 
 model Phase {
-  id                 String         @id @default(cuid())
-  name               String
-  type               String // PRACTICE_ROUND | INTERVIEW | PERFORMANCE | EXTRA_ROUND
-  sequence           Int
-  durationSeconds    Int
-  calibrationSeconds Int            @default(0)
-  artisticNormalizationFactor Float @default(1)
-  operationalStatus  String         @default("CLOSED") // CLOSED | OPEN | SUSPENDED
-  openedAt           DateTime?
-  closedAt           DateTime?
-  eventId            String
-  event              Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  slots              ScheduleSlot[]
+  id                          String         @id @default(cuid())
+  name                        String
+  type                        String // PRACTICE_ROUND | INTERVIEW | PERFORMANCE | EXTRA_ROUND
+  sequence                    Int
+  durationSeconds             Int
+  calibrationSeconds          Int            @default(0)
+  artisticNormalizationFactor Float          @default(1)
+  operationalStatus           String         @default("CLOSED") // CLOSED | OPEN | SUSPENDED
+  openedAt                    DateTime?
+  closedAt                    DateTime?
+  eventId                     String
+  event                       Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  slots                       ScheduleSlot[]
 
   @@unique([eventId, sequence])
   @@map("phases")

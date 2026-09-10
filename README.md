@@ -10,15 +10,15 @@ O Valhalla funciona em um servidor na rede local, permitindo que administração
 
 - Operação guiada em celulares e tablets: mesa ou palco → turno → fila → equipe → cronômetro → ficha → finalização.
 - Três rodadas de Resgate, com soma das duas melhores pontuações e critérios de desempate.
-- Entrevista, duas apresentações e apresentação extra da Artística.
+- Entrevista, duas apresentações e geração automática da fila de apresentação extra para equipes empatadas.
 - Notas individuais por jurado e confirmação explícita da ficha de consenso.
 - Rulesets, colunas de pontuação e fórmulas configuráveis.
 - Agenda com rodízio entre arenas, períodos indisponíveis e detecção de conflitos.
-- Rascunho persistente, recuperação entre tablets e comparação de versões concorrentes.
+- Rascunho persistente, recuperação entre tablets, fila local de ações durante quedas de rede e comparação de versões concorrentes.
 - Correções administrativas justificadas e histórico completo das alterações.
 - Ranking animado e telões configuráveis para horários, chamadas, avisos, imagens e mesas.
 - Importação e sincronização manual ou automática com o Olímpo.
-- Backups, restauração, exportações, diagnóstico e suporte a PWA.
+- Homologação versionada das regras, fichas oficiais em PDF por sessão, backups, restauração, diagnóstico e suporte a PWA.
 - Execução local por Node.js ou Docker.
 
 ## Operação da competição
@@ -38,6 +38,8 @@ O árbitro escolhe o posto e confirma o turno aberto pela administração. A tel
 O tablet não fica permanentemente preso a uma mesa ou pessoa. Operador, anunciador e pontuador são selecionados da lista de árbitros do evento e ficam pré-preenchidos no aparelho. Um novo nome pode ser incluído durante a operação mediante senha e identificação do administrador responsável.
 
 Cronômetros e rascunhos são persistidos no servidor. Recarregar a página ou assumir a sessão em outro tablet não apaga a ficha. Se dois aparelhos alterarem a mesma avaliação, o sistema informa o conflito e permite comparar e recuperar as versões.
+
+Se o tablet perder temporariamente a conexão com o servidor local, chamadas, pausas, reagendamentos, ausências e finalizações são preservados no aparelho, na ordem em que ocorreram. A fila é reenviada automaticamente após a reconexão e também pode ser disparada manualmente pelo árbitro.
 
 ### Resgate — Prática 2026
 
@@ -64,6 +66,7 @@ Cronômetros e rascunhos são persistidos no servidor. Recarregar a página ou a
 - Penalidades acumuladas entre as duas apresentações.
 - Registro de sustentabilidade, originalidade, conteúdo proibido e desclassificação.
 - Apresentação extra com fator de normalização configurável e auditado.
+- Detecção dos empates pelos critérios oficiais e geração da fila extra no palco escolhido, com horário e intervalo configuráveis.
 
 ### Agenda
 
@@ -86,6 +89,8 @@ Cronômetros e rascunhos são persistidos no servidor. Recarregar a página ou a
 - Registro de logins, sessões, cronômetros, rascunhos, notas, publicações e configurações.
 - Ranking ao vivo ou publicação manual em lotes.
 - Histórico e restauração de lotes publicados.
+- Validação objetiva e homologação das regras antes da homologação dos resultados; qualquer mudança posterior invalida a aprovação pelo hash da configuração.
+- Exportação da ficha preenchida de cada sessão em PDF, incluindo responsáveis, jurados, consenso, resultado e campos detalhados para assinatura.
 - Recursos formais e homologação dos resultados.
 
 ## Telões públicos
@@ -242,11 +247,13 @@ Em uma competição oficial, teste todos os tablets na rede, restaure um backup 
 npm run dev
 npm run type-check
 npm test
+npm run test:e2e:install
+npm run test:e2e
 npm run lint
 npm run build
 ```
 
-A suíte automatizada cobre autenticação, regras de pontuação, duas melhores rodadas, desempates, consenso e normalização artística, penalidades acumuladas, estados de fase, autorização administrativa, concorrência, lotes de publicação, tentativas adicionais, equivalência e rodízio das arenas, pausas, conflitos de horário e payload do Olímpo.
+A suíte automatizada cobre autenticação, regras de pontuação, duas melhores rodadas, desempates, consenso e normalização artística, penalidades acumuladas, estados de fase, autorização administrativa, concorrência, fila offline, lotes de publicação, tentativas adicionais, equivalência e rodízio das arenas, pausas, conflitos de horário e payload do Olímpo. Os testes de integração criam um SQLite temporário, aplicam as migrações e percorrem a API tRPC; o Playwright valida o telão e o login administrativo em Chromium desktop e tablet. O workflow de qualidade executa essas verificações em cada push e pull request.
 
 ## Arquitetura
 
