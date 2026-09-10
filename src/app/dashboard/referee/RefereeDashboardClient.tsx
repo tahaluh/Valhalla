@@ -1912,9 +1912,14 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
                 size="lg"
                 className="h-14 w-full text-base"
                 onClick={finalize}
-                disabled={!officialsConfirmed || saveCard.isPending || submitScore.isPending}
+                disabled={
+                  !officialsConfirmed ||
+                  saveCard.isPending ||
+                  submitScore.isPending ||
+                  transition.isPending
+                }
               >
-                {saveCard.isPending || submitScore.isPending
+                {saveCard.isPending || submitScore.isPending || transition.isPending
                   ? "Salvando..."
                   : "Finalizar ficha e atualizar ranking"}
               </Button>
