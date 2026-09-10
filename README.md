@@ -39,7 +39,7 @@ O tablet não fica permanentemente preso a uma mesa ou pessoa. Operador, anuncia
 
 Cronômetros e rascunhos são persistidos no servidor. Recarregar a página ou assumir a sessão em outro tablet não apaga a ficha. Se dois aparelhos alterarem a mesma avaliação, o sistema informa o conflito e permite comparar e recuperar as versões.
 
-Se o tablet perder temporariamente a conexão com o servidor local, chamadas, pausas, reagendamentos, ausências, sorteios surpresa e finalizações são preservados no aparelho, na ordem em que ocorreram. O banco de desafios aprovado fica armazenado no tablet para que a equipe receba o desafio mesmo durante a queda. A fila é reenviada automaticamente após a reconexão e também pode ser disparada manualmente pelo árbitro; conflitos entre tablets interrompem o envio para revisão.
+Se o tablet perder temporariamente a conexão com o servidor local, chamadas, pausas, reagendamentos, ausências, sorteios surpresa e finalizações são preservados no aparelho, na ordem em que ocorreram. O banco de desafios aprovado fica armazenado no tablet para que a equipe receba o desafio mesmo durante a queda. A fila é silenciosa e reenviada automaticamente após a reconexão. Uma ação recusada não interrompe o trabalho do árbitro: ela vira uma pendência no painel de auditoria, onde o admin registra a correção e a resolução.
 
 ### Resgate — Prática 2026
 

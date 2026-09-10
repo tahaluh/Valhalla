@@ -31,6 +31,7 @@ export async function buildEventBackup(tx: Prisma.TransactionClient, eventId: st
     terminals: await tx.terminal.findMany({ where: { eventId } }),
     terminalUsages: await tx.terminalUsage.findMany({ where: { terminal: { eventId } } }),
     auditLogs: await tx.auditLog.findMany({ where: { eventId } }),
+    offlineReviews: await tx.offlineCommandReview.findMany({ where: { eventId } }),
     displayViews: await tx.displayView.findMany({ where: { eventId } }),
     displayScreens: await tx.displayScreen.findMany({ where: { eventId } }),
     scores,

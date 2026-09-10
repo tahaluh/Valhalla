@@ -269,6 +269,7 @@ export const robustnessRouter = router({
     await ctx.prisma.$transaction(async (tx) => {
       await tx.publicationBatch.deleteMany({ where: { eventId: input.eventId } });
       await tx.scheduleBlackout.deleteMany({ where: { eventId: input.eventId } });
+      await tx.offlineCommandReview.deleteMany({ where: { eventId: input.eventId } });
       await tx.auditLog.deleteMany({ where: { eventId: input.eventId } });
       await tx.formalAppeal.deleteMany({ where: { eventId: input.eventId } });
       await tx.scheduleSlot.deleteMany({ where: { eventId: input.eventId } });
@@ -343,6 +344,8 @@ export const robustnessRouter = router({
       if (backup.appeals.length) await tx.formalAppeal.createMany({ data: backup.appeals });
       if (backup.publicationBatches?.length)
         await tx.publicationBatch.createMany({ data: backup.publicationBatches });
+      if (backup.offlineReviews?.length)
+        await tx.offlineCommandReview.createMany({ data: backup.offlineReviews });
       if (backup.auditLogs.length) await tx.auditLog.createMany({ data: backup.auditLogs });
       await tx.auditLog.create({
         data: {

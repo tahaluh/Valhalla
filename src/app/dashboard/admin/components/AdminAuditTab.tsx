@@ -3,8 +3,10 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/presentation/components/ui/card";
+import { Button } from "@/presentation/components/ui/button";
 
 export function AdminAuditTab({ eventId }: { eventId: string }) {
+  const utils = trpc.useUtils();
   const { data: stations = [] } = trpc.operation.listStations.useQuery(eventId);
   const { data: terminals = [] } = trpc.operation.listTerminals.useQuery(eventId);
   const { data: teams = [] } = trpc.team.listByEvent.useQuery(eventId);
@@ -16,6 +18,16 @@ export function AdminAuditTab({ eventId }: { eventId: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [search, setSearch] = useState("");
+  const [reviewNames, setReviewNames] = useState<Record<string, string>>({});
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const { data: offlineReviews = [] } = trpc.operation.listOfflineCommandReviews.useQuery(
+    { eventId, includeResolved: false },
+    { refetchInterval: 10000 },
+  );
+  const resolveOfflineReview = trpc.operation.resolveOfflineCommandReview.useMutation({
+    onSuccess: () =>
+      utils.operation.listOfflineCommandReviews.invalidate({ eventId, includeResolved: false }),
+  });
   const { data: logs = [], isLoading } = trpc.operation.auditLog.useQuery(
     {
       eventId,
@@ -133,6 +145,83 @@ export function AdminAuditTab({ eventId }: { eventId: string }) {
           />
         </CardContent>
       </Card>
+      {offlineReviews.length > 0 && (
+        <Card className="border-amber-400 bg-amber-50">
+          <CardHeader>
+            <CardTitle>Pendências recebidas dos tablets ({offlineReviews.length})</CardTitle>
+            <p className="text-sm text-amber-950">
+              A operação do tablet continuou normalmente. Confira cada conflito, faça a correção
+              administrativa necessária e registre abaixo como ele foi resolvido.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {offlineReviews.map((review) => (
+              <div key={review.id} className="rounded-xl border border-amber-300 bg-white p-4">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <strong>{actionLabel(review.kind)}</strong>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(review.createdAt).toLocaleString("pt-BR")}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm">
+                  Equipe: {teams.find((item) => item.id === review.teamId)?.name ?? "—"} · Mesa:{" "}
+                  {stations.find((item) => item.id === review.stationId)?.name ?? "—"} · Operador:{" "}
+                  {review.operatorName ?? "—"}
+                </p>
+                <p className="mt-2 rounded bg-red-50 p-2 text-sm text-red-900">
+                  <strong>Falha:</strong> {review.failureReason}
+                </p>
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer font-semibold">Ver ação enviada</summary>
+                  <pre className="mt-2 max-h-52 overflow-auto rounded bg-slate-950 p-3 text-slate-100">
+                    {pretty(review.payload)}
+                  </pre>
+                </details>
+                <div className="mt-3 grid gap-2 md:grid-cols-[1fr_2fr_auto]">
+                  <input
+                    className="h-10 rounded-md border px-3 text-sm"
+                    placeholder="Admin responsável"
+                    value={reviewNames[review.id] ?? ""}
+                    onChange={(event) =>
+                      setReviewNames((current) => ({
+                        ...current,
+                        [review.id]: event.target.value,
+                      }))
+                    }
+                  />
+                  <input
+                    className="h-10 rounded-md border px-3 text-sm"
+                    placeholder="Correção realizada / decisão tomada"
+                    value={reviewNotes[review.id] ?? ""}
+                    onChange={(event) =>
+                      setReviewNotes((current) => ({
+                        ...current,
+                        [review.id]: event.target.value,
+                      }))
+                    }
+                  />
+                  <Button
+                    disabled={
+                      (reviewNames[review.id]?.trim().length ?? 0) < 2 ||
+                      (reviewNotes[review.id]?.trim().length ?? 0) < 3 ||
+                      resolveOfflineReview.isPending
+                    }
+                    onClick={() =>
+                      resolveOfflineReview.mutate({
+                        id: review.id,
+                        resolvedBy: reviewNames[review.id]!.trim(),
+                        resolutionNote: reviewNotes[review.id]!.trim(),
+                      })
+                    }
+                  >
+                    Marcar resolvido
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Histórico de rascunhos por tablet</CardTitle>

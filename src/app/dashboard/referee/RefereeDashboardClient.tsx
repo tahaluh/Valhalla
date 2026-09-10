@@ -183,9 +183,8 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     null,
   );
   const [offlineRetry, setOfflineRetry] = useState(0);
-  const [offlineCommands, setOfflineCommands] = useState<OfflineCommand[]>([]);
+  const [, setOfflineCommands] = useState<OfflineCommand[]>([]);
   const [localSurprise, setLocalSurprise] = useState<Record<string, LocalSurpriseState>>({});
-  const [flushingOffline, setFlushingOffline] = useState(false);
   const flushingOfflineRef = useRef(false);
   const [selectedJudge, setSelectedJudge] = useState("");
   const [artisticDecision, setArtisticDecision] = useState<
@@ -250,10 +249,14 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
       await queueQuery.refetch();
       setMessage("");
     },
-    onError: (error) => setMessage(error.message),
+    onError: (error) => {
+      if (!flushingOfflineRef.current) setMessage(error.message);
+    },
   });
   const saveCard = trpc.operation.saveScorecard.useMutation({
-    onError: (error) => setMessage(error.message),
+    onError: (error) => {
+      if (!flushingOfflineRef.current) setMessage(error.message);
+    },
   });
   const saveDraft = trpc.operation.saveScorecardDraft.useMutation();
   const saveJudgeScore = trpc.operation.saveJudgeScore.useMutation({
@@ -285,21 +288,29 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     onError: (error) => setMessage(error.message),
   });
   const submitScore = trpc.score.submitBatch.useMutation({
-    onError: (error) => setMessage(error.message),
+    onError: (error) => {
+      if (!flushingOfflineRef.current) setMessage(error.message);
+    },
   });
+  const reportOfflineFailure = trpc.operation.reportOfflineCommandFailure.useMutation();
   const drawSurprise = trpc.operation.drawSurpriseChallenge.useMutation({
     onSuccess: async () => {
       await surpriseQueueQuery.refetch();
-      setMessage("Desafio sorteado e salvo. Mostre o texto à equipe.");
+      if (!flushingOfflineRef.current)
+        setMessage("Desafio sorteado e salvo. Mostre o texto à equipe.");
     },
-    onError: (error) => setMessage(error.message),
+    onError: (error) => {
+      if (!flushingOfflineRef.current) setMessage(error.message);
+    },
   });
   const decideSurprise = trpc.operation.setSurpriseDecision.useMutation({
     onSuccess: async () => {
       await surpriseQueueQuery.refetch();
-      setMessage("Situação do desafio salva.");
+      if (!flushingOfflineRef.current) setMessage("Situação do desafio salva.");
     },
-    onError: (error) => setMessage(error.message),
+    onError: (error) => {
+      if (!flushingOfflineRef.current) setMessage(error.message);
+    },
   });
 
   function queueOfflineCommand(kind: OfflineCommand["kind"], payload: unknown) {
@@ -346,7 +357,6 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
   async function flushOfflineCommands() {
     if (flushingOfflineRef.current || !navigator.onLine) return;
     flushingOfflineRef.current = true;
-    setFlushingOffline(true);
     const commands = readOfflineCommands(window.localStorage, eventId);
     for (const command of commands) {
       try {
@@ -365,17 +375,49 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
           });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        setOfflineCommands(
-          markOfflineCommandFailure(window.localStorage, command.id, reason).filter(
-            (item) => item.eventId === eventId,
-          ),
-        );
-        setMessage(`A fila offline parou para revisão: ${reason}`);
-        break;
+        if (isConnectionFailure(error)) {
+          setOfflineCommands(
+            markOfflineCommandFailure(window.localStorage, command.id, reason).filter(
+              (item) => item.eventId === eventId,
+            ),
+          );
+          break;
+        }
+        try {
+          await reportOfflineFailure.mutateAsync({
+            eventId,
+            commandId: command.id,
+            kind: command.kind,
+            payload: JSON.stringify(command.payload),
+            reason,
+            terminalId,
+            operatorName,
+          });
+          setOfflineCommands(
+            removeOfflineCommand(window.localStorage, command.id).filter(
+              (item) => item.eventId === eventId,
+            ),
+          );
+          const slotId = (command.payload as { slotId?: string }).slotId;
+          if (slotId)
+            setLocalSurprise((current) => {
+              const next = { ...current };
+              delete next[slotId];
+              return next;
+            });
+        } catch (reportError) {
+          const reportReason =
+            reportError instanceof Error ? reportError.message : String(reportError);
+          setOfflineCommands(
+            markOfflineCommandFailure(window.localStorage, command.id, reportReason).filter(
+              (item) => item.eventId === eventId,
+            ),
+          );
+          break;
+        }
       }
     }
     flushingOfflineRef.current = false;
-    setFlushingOffline(false);
     await queueQuery.refetch();
   }
   const logout = trpc.auth.logout.useMutation({ onSuccess: () => router.push("/login") });
@@ -430,7 +472,11 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
     const flush = () => void flushOfflineCommands();
     window.addEventListener("online", flush);
     if (navigator.onLine && readOfflineCommands(window.localStorage, eventId).length) flush();
-    return () => window.removeEventListener("online", flush);
+    const timer = window.setInterval(flush, 10_000);
+    return () => {
+      window.removeEventListener("online", flush);
+      window.clearInterval(timer);
+    };
     // As mutations são estáveis; reconectar ou trocar de evento dispara o processamento da fila.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
@@ -1139,23 +1185,6 @@ export default function RefereeDashboardClient({ eventId }: { eventId: string })
             {message}
           </p>
         )}
-        {offlineCommands.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
-            <span>
-              <strong>{offlineCommands.length} ação(ões) aguardando envio.</strong> A ordem foi
-              preservada neste tablet.
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={flushingOffline || (typeof navigator !== "undefined" && !navigator.onLine)}
-              onClick={() => void flushOfflineCommands()}
-            >
-              {flushingOffline ? "Enviando…" : "Enviar agora"}
-            </Button>
-          </div>
-        )}
-
         {screen === "setup" && (
           <Card>
             <CardHeader>

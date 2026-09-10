@@ -68,6 +68,7 @@ model Event {
   slots              ScheduleSlot[]
   terminals          Terminal[]
   auditLogs          AuditLog[]
+  offlineReviews     OfflineCommandReview[]
   displayViews       DisplayView[]
   displayScreens     DisplayScreen[]
   appeals            FormalAppeal[]
@@ -388,6 +389,26 @@ model AuditLog {
   @@index([eventId, createdAt])
   @@index([stationId, createdAt])
   @@map("audit_logs")
+}
+
+model OfflineCommandReview {
+  id             String    @id
+  eventId        String
+  event          Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  kind           String
+  payload        String
+  failureReason  String
+  stationId      String?
+  teamId         String?
+  terminalId     String?
+  operatorName   String?
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  resolutionNote String?
+  createdAt      DateTime  @default(now())
+
+  @@index([eventId, resolvedAt, createdAt])
+  @@map("offline_command_reviews")
 }
 
 model DisplayView {

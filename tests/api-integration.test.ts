@@ -96,6 +96,33 @@ test("API tRPC percorre abertura, chamada, rascunho e início em banco real", as
       updateConfig: () => undefined,
     },
   });
+  await referee.operation.reportOfflineCommandFailure({
+    eventId: event.id,
+    commandId: "offline-conflict-integration",
+    kind: "TRANSITION",
+    payload: JSON.stringify({ slotId: slot.id, state: "CALLED" }),
+    reason: "Versão alterada durante o teste",
+    operatorName: "Teste de integração",
+  });
+  const pendingOfflineReviews = await caller.operation.listOfflineCommandReviews({
+    eventId: event.id,
+    includeResolved: false,
+  });
+  assert.equal(pendingOfflineReviews.length, 1);
+  await caller.operation.resolveOfflineCommandReview({
+    id: pendingOfflineReviews[0]!.id,
+    resolvedBy: "Admin de teste",
+    resolutionNote: "Estado conferido no histórico e mantido.",
+  });
+  assert.equal(
+    (
+      await caller.operation.listOfflineCommandReviews({
+        eventId: event.id,
+        includeResolved: false,
+      })
+    ).length,
+    0,
+  );
   const called = await referee.operation.transitionSession({
     slotId: slot.id,
     state: "CALLED",

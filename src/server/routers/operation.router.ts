@@ -92,6 +92,114 @@ function parseChallengeBanks(value: string): { LEVEL1: string[]; LEVEL2: string[
 }
 
 export const operationRouter = router({
+  reportOfflineCommandFailure: refereeProcedure
+    .input(
+      z.object({
+        eventId: z.string(),
+        commandId: z.string().min(1),
+        kind: z.enum(["TRANSITION", "FINALIZE", "DRAW_SURPRISE", "DECIDE_SURPRISE"]),
+        payload: z.string().max(100_000),
+        reason: z.string().max(2000),
+        terminalId: z.string().optional(),
+        operatorName: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      assertSessionEvent(ctx.user, input.eventId);
+      let slotId: string | undefined;
+      try {
+        const payload = JSON.parse(input.payload) as {
+          slotId?: string;
+          save?: { slotId?: string };
+        };
+        slotId = payload.slotId ?? payload.save?.slotId;
+      } catch {}
+      const slot = slotId
+        ? await ctx.prisma.scheduleSlot.findFirst({
+            where: { id: slotId, eventId: input.eventId },
+            select: { id: true, stationId: true, teamId: true },
+          })
+        : null;
+      await ctx.prisma.offlineCommandReview.upsert({
+        where: { id: input.commandId },
+        create: {
+          id: input.commandId,
+          eventId: input.eventId,
+          kind: input.kind,
+          payload: input.payload,
+          failureReason: input.reason,
+          stationId: slot?.stationId,
+          teamId: slot?.teamId,
+          terminalId: input.terminalId,
+          operatorName: input.operatorName,
+        },
+        update: {
+          failureReason: input.reason,
+          payload: input.payload,
+        },
+      });
+      await audit(ctx, {
+        eventId: input.eventId,
+        action: "OFFLINE_COMMAND_REVIEW_REQUIRED",
+        entityType: "OfflineCommand",
+        entityId: input.commandId,
+        stationId: slot?.stationId,
+        teamId: slot?.teamId,
+        terminalId: input.terminalId,
+        operatorName: input.operatorName,
+        after: { kind: input.kind, slotId, payload: input.payload },
+        reason: input.reason,
+      });
+      return { reported: true };
+    }),
+  listOfflineCommandReviews: adminProcedure
+    .input(z.object({ eventId: z.string(), includeResolved: z.boolean().default(false) }))
+    .query(({ ctx, input }) => {
+      assertSessionEvent(ctx.user, input.eventId);
+      return ctx.prisma.offlineCommandReview.findMany({
+        where: {
+          eventId: input.eventId,
+          ...(input.includeResolved ? {} : { resolvedAt: null }),
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }),
+  resolveOfflineCommandReview: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        resolvedBy: z.string().trim().min(2).max(120),
+        resolutionNote: z.string().trim().min(3).max(2000),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const before = await ctx.prisma.offlineCommandReview.findUniqueOrThrow({
+        where: { id: input.id },
+      });
+      assertSessionEvent(ctx.user, before.eventId);
+      const review = await ctx.prisma.offlineCommandReview.update({
+        where: { id: input.id },
+        data: {
+          resolvedAt: new Date(),
+          resolvedBy: input.resolvedBy,
+          resolutionNote: input.resolutionNote,
+        },
+      });
+      await audit(ctx, {
+        eventId: before.eventId,
+        action: "OFFLINE_COMMAND_REVIEW_RESOLVED",
+        entityType: "OfflineCommandReview",
+        entityId: review.id,
+        stationId: review.stationId ?? undefined,
+        teamId: review.teamId ?? undefined,
+        terminalId: review.terminalId ?? undefined,
+        operatorName: input.resolvedBy,
+        before,
+        after: review,
+        reason: input.resolutionNote,
+      });
+      return review;
+    }),
   listReferees: publicProcedure
     .input(z.string())
     .query(({ ctx, input: eventId }) =>
