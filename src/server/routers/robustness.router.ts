@@ -302,6 +302,7 @@ export const robustnessRouter = router({
         resultsStatus: backup.event.resultsStatus,
         resultsHomologatedAt: backup.event.resultsHomologatedAt,
         olimpoLastSyncAt: backup.event.olimpoLastSyncAt,
+        olimpoLastSyncAttemptAt: backup.event.olimpoLastSyncAttemptAt,
         olimpoLastSyncStatus: backup.event.olimpoLastSyncStatus,
         olimpoLastSyncMessage: backup.event.olimpoLastSyncMessage,
         olimpoAutoSyncEnabled: backup.event.olimpoAutoSyncEnabled,

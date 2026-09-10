@@ -1,6 +1,10 @@
 import { prisma } from "@/infrastructure/database/prisma";
 import { rankTeams } from "@/application/services/scoring.service";
 
+// Nomes padrão de Table.headerRank e Table.headerFinal usados pelo Tournamenter.
+export const OLIMPO_RANK_HEADER = "Rank";
+export const OLIMPO_FINAL_HEADER = "Final";
+
 export type OlimpoCategoryInput = {
   scoringFormula: string;
   scoreColumns: Array<{ name: string; order: number }>;
@@ -49,9 +53,9 @@ export function buildOlimpoSteps(categories: OlimpoCategoryInput[]) {
       );
       const rankById = new Map(ranked.map((row) => [row.teamId, row]));
       const headers = [
-        "Posição",
+        OLIMPO_RANK_HEADER,
         ...category.scoreColumns.map((column) => column.name),
-        "Pontuação final",
+        OLIMPO_FINAL_HEADER,
       ];
       return {
         id: first.externalStepId!,
@@ -61,8 +65,8 @@ export function buildOlimpoSteps(categories: OlimpoCategoryInput[]) {
           const rank = rankById.get(team.id)!;
           const dataMap: Record<string, string> = {};
           const headersMap: Record<string, number> = {
-            Posição: rank.rank,
-            "Pontuação final": rank.finalScore,
+            [OLIMPO_RANK_HEADER]: rank.rank,
+            [OLIMPO_FINAL_HEADER]: rank.finalScore,
           };
           for (const column of category.scoreColumns) {
             const score = team.scores.find((item) => item.columnIndex === column.order);
@@ -77,11 +81,12 @@ export function buildOlimpoSteps(categories: OlimpoCategoryInput[]) {
 }
 
 export async function syncEventToOlimpo(eventId: string, actorRole = "SYSTEM") {
-  const steps = buildOlimpoSteps(await loadCategories(eventId));
-  if (!steps.length) throw new Error("Nenhuma equipe possui etapa, token e ID do Olimpo.");
   const endpoint =
     process.env.OLIMPO_SCORE_API_URL ?? "https://olimpo.robocup.org.br/api/events/steps/score";
+  const attemptedAt = new Date();
   try {
+    const steps = buildOlimpoSteps(await loadCategories(eventId));
+    if (!steps.length) throw new Error("Nenhuma equipe possui etapa, token e ID do Olimpo.");
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -95,6 +100,7 @@ export async function syncEventToOlimpo(eventId: string, actorRole = "SYSTEM") {
       where: { id: eventId },
       data: {
         olimpoLastSyncAt: syncedAt,
+        olimpoLastSyncAttemptAt: attemptedAt,
         olimpoLastSyncStatus: "SUCCESS",
         olimpoLastSyncMessage: body || "OK",
       },
@@ -115,7 +121,7 @@ export async function syncEventToOlimpo(eventId: string, actorRole = "SYSTEM") {
     await prisma.event.update({
       where: { id: eventId },
       data: {
-        olimpoLastSyncAt: new Date(),
+        olimpoLastSyncAttemptAt: attemptedAt,
         olimpoLastSyncStatus: "ERROR",
         olimpoLastSyncMessage: message.slice(0, 2000),
       },

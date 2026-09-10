@@ -274,6 +274,7 @@ export const eventRouter = router({
         resultsStatus: true,
         resultsHomologatedAt: true,
         olimpoLastSyncAt: true,
+        olimpoLastSyncAttemptAt: true,
         olimpoLastSyncStatus: true,
         olimpoLastSyncMessage: true,
         olimpoAutoSyncEnabled: true,

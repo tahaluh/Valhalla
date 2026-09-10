@@ -38,7 +38,8 @@ model Event {
   publicRankingPublishedAt  DateTime?
   resultsStatus             String    @default("PROVISIONAL") // PROVISIONAL | HOMOLOGATED
   resultsHomologatedAt      DateTime?
-  olimpoLastSyncAt          DateTime?
+  olimpoLastSyncAt          DateTime? // última sincronização concluída com sucesso (mesma semântica do plugin)
+  olimpoLastSyncAttemptAt   DateTime?
   olimpoLastSyncStatus      String?
   olimpoLastSyncMessage     String?
   olimpoAutoSyncEnabled     Boolean   @default(false)

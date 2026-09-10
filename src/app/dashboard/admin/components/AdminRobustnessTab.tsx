@@ -526,9 +526,14 @@ export function AdminRobustnessTab({ eventId }: { eventId: string }) {
             </span>
           )}
           <div className="text-sm">
-            <strong>Última tentativa:</strong>{" "}
+            <strong>Último sucesso:</strong>{" "}
             {event?.olimpoLastSyncAt
               ? new Date(event.olimpoLastSyncAt).toLocaleString("pt-BR")
+              : "nunca"}
+            <br />
+            <strong>Última tentativa:</strong>{" "}
+            {event?.olimpoLastSyncAttemptAt
+              ? new Date(event.olimpoLastSyncAttemptAt).toLocaleString("pt-BR")
               : "nunca"}{" "}
             · {event?.olimpoLastSyncStatus ?? "sem status"}
           </div>

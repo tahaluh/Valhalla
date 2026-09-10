@@ -586,6 +586,25 @@ export const teamRouter = router({
       }
     });
 
+    const step = extractStepPayload(payload);
+    await ctx.prisma.auditLog.create({
+      data: {
+        eventId: input.eventId,
+        action: "OLIMPO_TEAMS_IMPORTED",
+        entityType: "Event",
+        entityId: input.eventId,
+        actorRole: ctx.user.role,
+        after: JSON.stringify({
+          token: input.token.trim(),
+          stepId:
+            typeof step.id === "string" || typeof step.id === "number" ? String(step.id) : null,
+          imported: importedTeams.length,
+          created: actions.filter((action) => action.action === "create").length,
+          updated: actions.filter((action) => action.action === "update").length,
+        }),
+      },
+    });
+
     return {
       appliedCount: actions.length,
       createCount: actions.filter((action) => action.action === "create").length,

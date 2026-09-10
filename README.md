@@ -126,6 +126,8 @@ Content-Type: application/json
 
 As equipes são agrupadas corretamente por etapa e token. Os valores calculados seguem em `headersMap`, enquanto a ficha serializada correspondente segue em `dataMap`. A última tentativa, o retorno do serviço e eventuais falhas aparecem no painel de diagnóstico. Se a internet estiver indisponível, uma nova tentativa ocorre no próximo intervalo configurado.
 
+A implementação foi conferida campo a campo contra o `tournamenter-obr` 2026.1.5. Consulte a [especificação de compatibilidade](docs/OLIMPO_COMPATIBILITY.md) para ver endpoints, mapeamentos, payload e o teste local completo do contrato.
+
 ## Perfis de acesso
 
 | Perfil        | Acesso                                                                |
@@ -178,6 +180,7 @@ SESSION_SECRET="gere-uma-chave-segura-com-pelo-menos-32-caracteres"
 DATABASE_URL="file:./data/valhalla.db"
 NEXT_PUBLIC_APP_URL="http://IP-DO-SERVIDOR:3000"
 SESSION_COOKIE_SECURE="false"
+OLIMPO_API_BASE_URL="https://olimpo.robocup.org.br/api/events/steps"
 OLIMPO_SCORE_API_URL="https://olimpo.robocup.org.br/api/events/steps/score"
 ```
 

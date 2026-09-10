@@ -63,8 +63,8 @@ async function tick() {
   for (const event of events) {
     if (
       event.olimpoAutoSyncEnabled &&
-      (!event.olimpoLastSyncAt ||
-        now - event.olimpoLastSyncAt.getTime() >= event.olimpoSyncIntervalSeconds * 1000)
+      (!event.olimpoLastSyncAttemptAt ||
+        now - event.olimpoLastSyncAttemptAt.getTime() >= event.olimpoSyncIntervalSeconds * 1000)
     )
       await syncEventToOlimpo(event.id).catch(() => undefined);
     if (event.autoBackupEnabled) {
