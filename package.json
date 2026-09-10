@@ -5,8 +5,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
-    "start": "next start",
+    "build": "prisma generate && next build && npm run standalone:prepare",
+    "standalone:prepare": "mkdir -p .next/standalone/public .next/standalone/.next/static && cp -R public/. .next/standalone/public/ && cp -R .next/static/. .next/standalone/.next/static/",
+    "start": "node .next/standalone/server.js",
     "server:start": "bash scripts/valhalla-server.sh start",
     "server:stop": "bash scripts/valhalla-server.sh stop",
     "server:restart": "bash scripts/valhalla-server.sh restart",

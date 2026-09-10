@@ -371,7 +371,7 @@ Prepare e execute:
 ```bash
 npm run prisma:migrate
 npm run build
-npm start
+npm run server:start
 ```
 
 Abra `http://localhost:3000` no servidor ou `http://IP-DO-SERVIDOR:3000` nos tablets.
