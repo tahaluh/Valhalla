@@ -1,312 +1,116 @@
 # ⚔️ Valhalla
 
-**Valhalla** é um gerenciador livre de torneios para etapas presenciais da [Olimpíada Brasileira de Robótica (OBR)](https://www.obr.org.br/). A operação principal funciona em uma rede local, sem depender de internet, e a sincronização com o Olímpo pode ser feita quando houver conexão.
+Gerenciador livre de torneios para etapas presenciais da [Olimpíada Brasileira de Robótica (OBR)](https://www.obr.org.br/), com suporte às modalidades **Prática (Resgate)** e **Artística** nas categorias Nível 1 e Nível 2.
 
----
+O Valhalla funciona em um servidor na rede local, permitindo que administração, secretaria, árbitros, mesas, palcos e telões operem mesmo sem internet. Quando houver conexão, as equipes podem ser importadas e os resultados sincronizados com o Olímpo.
+
+> A modalidade Virtual não faz parte do escopo atual.
 
 ## Funcionalidades
 
-- 🏆 **Prática e Artística** — categorias Nível 1 e Nível 2, três rodadas de Resgate e avaliação artística completa
-- 📱 **Operação por mesa** — fila, chamadas, calibração, cronômetros, ficha, ausência e reagendamento em tablets
-- 📝 **Rascunho e auditoria** — salvamento automático, histórico, identificação dos árbitros e comparação de conflitos
-- 🧮 **Regras configuráveis** — colunas, fórmulas, rulesets por arena e desempates da OBR 2026
-- 📺 **Telões públicos** — ranking animado, agenda, chamadas, avisos, imagens e situação das mesas
-- 📅 **Agenda avançada** — rodízio entre arenas fáceis, médias e difíceis, pausas e exportações
-- 🔄 **Integração com o Olímpo** — importação de equipes e sincronização manual ou periódica dos resultados
-- 💾 **Contingência local** — backup, restauração, diagnóstico, PWA e execução sem internet
-- 🐳 **Docker-ready** — inicialização por Docker Compose ou pelos scripts locais
+- Operação guiada em celulares e tablets: mesa ou palco → turno → fila → equipe → cronômetro → ficha → finalização.
+- Três rodadas de Resgate, com soma das duas melhores pontuações e critérios de desempate.
+- Entrevista, duas apresentações e apresentação extra da Artística.
+- Notas individuais por jurado e confirmação explícita da ficha de consenso.
+- Rulesets, colunas de pontuação e fórmulas configuráveis.
+- Agenda com rodízio entre arenas, períodos indisponíveis e detecção de conflitos.
+- Rascunho persistente, recuperação entre tablets e comparação de versões concorrentes.
+- Correções administrativas justificadas e histórico completo das alterações.
+- Ranking animado e telões configuráveis para horários, chamadas, avisos, imagens e mesas.
+- Importação e sincronização manual ou automática com o Olímpo.
+- Backups, restauração, exportações, diagnóstico e suporte a PWA.
+- Execução local por Node.js ou Docker.
 
----
+## Operação da competição
 
-## Tech Stack
+### Mesas, arenas e palcos
 
-| Layer      | Technology              |
-| ---------- | ----------------------- |
-| Framework  | Next.js 15 (App Router) |
-| Language   | TypeScript (strict)     |
-| API        | tRPC v11                |
-| Database   | SQLite via Prisma       |
-| Styling    | TailwindCSS v4          |
-| UI         | shadcn/ui components    |
-| Validation | Zod                     |
-| Session    | iron-session            |
-| Container  | Docker + Docker Compose |
+O árbitro escolhe o posto e confirma o turno aberto pela administração. A tela apresenta a fila em ordem e conduz uma equipe por vez pelas ações disponíveis:
 
----
+- chamar equipe, com múltiplas chamadas registradas;
+- iniciar calibração;
+- iniciar ou pausar a rodada;
+- abrir e preencher a ficha;
+- marcar ausência;
+- solicitar reagendamento;
+- encerrar ou finalizar a avaliação.
 
-## Project Structure
+O tablet não fica permanentemente preso a uma mesa ou pessoa. Operador, anunciador e pontuador são selecionados da lista de árbitros do evento e ficam pré-preenchidos no aparelho. Um novo nome pode ser incluído durante a operação mediante senha e identificação do administrador responsável.
 
-```
-src/
-├── app/                       # Next.js App Router pages
-│   ├── api/trpc/[trpc]/       # tRPC API endpoint
-│   ├── login/                 # Login page
-│   ├── dashboard/
-│   │   ├── admin/             # Admin dashboard
-│   │   └── referee/           # Referee scoring interface
-│   └── view/                  # Telões públicos configuráveis
-├── domain/                    # Pure domain types & interfaces
-│   ├── entities/              # Entity types (Event, Team, Category, Score, User)
-│   └── repositories/          # Repository interfaces
-├── application/               # Business logic
-│   └── services/              # Auth service, Scoring engine
-├── infrastructure/            # External system integrations
-│   ├── database/              # Prisma client singleton
-│   ├── repositories/          # Prisma repository implementations
-│   └── auth/                  # iron-session configuration
-├── presentation/              # UI components
-│   └── components/
-│       ├── ui/                # shadcn/ui components
-│       └── shared/            # TRPCProvider, layout wrappers
-├── server/                    # tRPC server
-│   ├── trpc/                  # tRPC init, context, router
-│   └── routers/               # Feature routers (event, team, category, score, auth)
-└── lib/                       # Shared utilities
-    ├── utils.ts               # cn(), formatDate(), etc.
-    ├── logger.ts              # Structured logger
-    └── trpc/                  # tRPC client helpers
-```
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) 20+
-- [Docker](https://www.docker.com/) (optional, for containerized deployment)
-
-### Local Development
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/OtacilioN/Valhalla.git
-cd Valhalla
-
-# 2. Copy environment variables
-cp .env.example .env
-# Edit .env and set a strong SESSION_SECRET (min 32 chars)
-
-# 3. Install dependencies
-npm install
-
-# 4. Set up the database
-npm run prisma:migrate
-
-# 5. Start the development server
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to view the app.
-
-### Production with Docker
-
-```bash
-# 1. Copy and configure environment
-cp .env.example .env
-# Set SESSION_SECRET to a secure random string
-
-# 2. Build and start
-docker-compose up -d
-
-# 3. Access at http://localhost:3000
-```
-
-The database is persisted in a Docker volume (`valhalla_data`).
-
----
-
-## Perfis de acesso
-
-| Perfil      | Acesso                                                                |
-| ----------- | --------------------------------------------------------------------- |
-| `ADMIN`     | Evento, equipes, regras, agenda, auditoria, publicação e contingência |
-| `REFEREE`   | Operação de qualquer mesa/palco e preenchimento das fichas            |
-| `SECRETARY` | Acompanhamento e ações operacionais autorizadas                       |
-| Público     | Telões em `/view` e `/view/<nome>`, sem autenticação                  |
-
-A autenticação é local, sem e-mail ou OAuth. As pessoas da arbitragem são selecionadas de uma lista cadastrada no evento; inclusões excepcionais durante a operação exigem autorização administrativa.
-
----
-
-## Domain Overview
-
-### Event
-
-The central entity. Each event has:
-
-- Name, description, location, start/end dates
-- Admin & referee passwords
-- Arenas, Categories, Referees
-
-Only **one event can be active** at a time.
-
-### Categories
-
-Default categories created with each event:
-
-- Rescue Level 1
-- Rescue Level 2
-- Artistic Level 1
-- Artistic Level 2
-
-Each category has:
-
-- Configurable score columns
-- A JavaScript scoring formula
-
-### Colunas padrão
-
-**Rescue:** Round 1 · Time 1 · Round 2 · Time 2 · Round 3 · Time 3
-
-**Artística:** Entrevista · Apresentação 1 · Apresentação 2 · Penalidades · Sustentabilidade · Apresentação extra normalizada
-
-### Scoring Formulas
-
-Formulas are stored as JavaScript IIFEs:
-
-```javascript
-// Resgate: soma das duas melhores entre três rodadas
-(function (scores) {
-  var rounds = [scores[0], scores[2], scores[4]];
-  var times = [scores[1], scores[3], scores[5]];
-  // ... discard worst, sum rest
-  return [total, tiebreakerTime];
-});
-
-// Artística: 40% entrevista, 60% da melhor apresentação e sustentabilidade
-(function (scores) {
-  var max = scores[1] > scores[2] ? scores[1] : scores[2];
-  var score = scores[0] * 0.4 + max * 0.6 + scores[4];
-  return [score, -(scores[1] + scores[2]), scores[3], -(scores[5] || 0)];
-});
-```
-
----
-
-## Environment Variables
-
-| Variable               | Required | Description                                                |
-| ---------------------- | -------- | ---------------------------------------------------------- |
-| `SESSION_SECRET`       | ✅       | Secret for iron-session (≥32 chars)                        |
-| `DATABASE_URL`         | ✅       | SQLite path (e.g. `file:./data/valhalla.db`)               |
-| `NEXT_PUBLIC_APP_URL`  | ❌       | App URL for tRPC client (default: `http://localhost:3000`) |
-| `OLIMPO_SCORE_API_URL` | ❌       | Endpoint de resultados do Olímpo                           |
-
----
-
-## Database Migrations
-
-```bash
-# Create a new migration
-npm run prisma:migrate
-
-# Apply migrations in production
-npx prisma migrate deploy
-
-# Open Prisma Studio (database UI)
-npm run prisma:studio
-```
-
----
-
-## Architecture Principles
-
-- **Clean Architecture** layers: domain → application → infrastructure → presentation
-- **tRPC** for end-to-end type safety
-- **Server components** preferred; client components only when needed
-- **Strict TypeScript** — no `any`
-- **Feature-oriented** folder structure
-- Serviços isolados para pontuação, backup e sincronização com o Olímpo
-
----
-
-## Operação OBR presencial 2026
-
-O sistema cobre **Prática (Resgate) e Artística**, com uso em tablets, servidor na rede local, rastreabilidade das alterações e telões públicos. Os fluxos operacionais do `tournamenter-obr` foram incorporados à arquitetura e à interface do Valhalla.
-
-> A modalidade Virtual não faz parte deste escopo.
-
-## O que está pronto
-
-### Operação por mesa
-
-- Fluxo mobile/tablet em etapas: selecionar mesa ou palco, confirmar turno, visualizar a fila e abrir a equipe.
-- Qualquer tablet pode assumir qualquer mesa; o equipamento não fica preso a um árbitro.
-- Chamada de equipe, calibração, início da rodada, ausência, reagendamento, pausa e encerramento.
-- Confirmação nas ações críticas, sem confirmação desnecessária ao pausar.
-- Cronômetros persistidos no servidor e recuperáveis em outro tablet.
-- Rascunho automático da ficha, histórico de revisões e recuperação após recarregar ou trocar de aparelho.
-- Detecção de conflito quando dois tablets alteram a mesma ficha.
-- Operador, anunciador e pontuador selecionados da lista de árbitros do evento.
-- Inclusão excepcional de um novo nome mediante autorização administrativa.
-- Correção de ficha finalizada com senha, identificação do administrador e justificativa.
+Cronômetros e rascunhos são persistidos no servidor. Recarregar a página ou assumir a sessão em outro tablet não apaga a ficha. Se dois aparelhos alterarem a mesma avaliação, o sistema informa o conflito e permite comparar e recuperar as versões.
 
 ### Resgate — Prática 2026
 
 - Três rodadas por equipe e ranking pela soma das duas melhores notas.
-- Colunas de nota e tempo das três rodadas, incluindo os desempates.
-- Ruleset configurável por arena: obstáculos, gangorra, rampas, lacunas, redutores, checkpoints, saída, vítimas e multiplicadores.
-- Quantidade de ladrilhos definida na arena e preenchimento por marcação, sem digitação durante a rodada.
-- Tentativas de checkpoint de zero a nove.
-- Da quarta tentativa em diante, o checkpoint não pontua ladrilhos, mas todas as falhas contam no bônus de saída.
-- Estados distintos para checkpoint alcançado, não alcançado e abandonado.
-- Ação **Fim da rodada / desistência**, atribuindo cinco minutos ao desempate.
-- Desafio surpresa com sorteio, elegibilidade, execução, desistência e conclusão.
-- Bancos independentes para Nível 1 e Nível 2, sem repetição entre a segunda e a terceira rodada enquanto houver outra opção.
+- Nota e tempo registrados separadamente em cada rodada.
+- Ruleset editável por arena, incluindo checkpoints, ladrilhos, gangorras, interseções, obstáculos, rampas, lacunas, redutores, saída, vítimas e multiplicadores.
+- Quantidade de ladrilhos definida previamente; durante a rodada o árbitro apenas marca as passagens e tentativas.
+- Registro de checkpoint alcançado, não alcançado ou abandonado.
+- Tentativas adicionais: da quarta em diante o checkpoint não pontua ladrilhos, mas as falhas continuam contando para o bônus de saída.
+- Encerramento por **Fim da rodada / desistência**, com tempo máximo aplicado ao desempate.
+- Desafios surpresa separados por Nível 1 e Nível 2, com sorteio, elegibilidade, execução e conclusão.
+- Proteção contra repetição do mesmo desafio entre a segunda e a terceira rodada enquanto existir outra opção.
+- Verificação da pontuação máxima teórica das arenas antes de gerar a agenda avançada.
 
 ### Artística 2026
 
-- Entrevista técnica e duas apresentações.
-- Cronômetros próprios de entrevista, palco e apresentação.
-- Registro individual por jurado e confirmação explícita de uma ficha de consenso, com invalidação do consenso quando uma nota é alterada.
-- Mínimo de dois jurados na entrevista e três nas apresentações; ao menos um jurado do palco deve ter participado da entrevista.
-- Penalidades acumuladas entre as duas apresentações, sustentabilidade, originalidade, conteúdo proibido e desclassificação.
-- Apresentação extra para desempate, com fator de normalização configurável por fase e trilha de auditoria.
-- Melhor apresentação combinada com entrevista e sustentabilidade conforme a fórmula configurada.
+- Entrevista técnica, duas apresentações oficiais e apresentação extra de desempate.
+- Cronômetros próprios para entrevista e palco.
+- Mínimo de dois jurados na entrevista e três nas apresentações.
+- Ao menos um jurado da apresentação deve ter participado da entrevista.
+- Cada jurado registra sua ficha individual; o grupo então confirma uma ficha única de consenso.
+- Alterar uma nota individual invalida o consenso anterior e exige nova confirmação.
+- O servidor recalcula a nota oficial a partir da ficha, sem confiar apenas no total enviado pelo navegador.
+- Penalidades acumuladas entre as duas apresentações.
+- Registro de sustentabilidade, originalidade, conteúdo proibido e desclassificação.
+- Apresentação extra com fator de normalização configurável e auditado.
 
-### Agenda avançada
+### Agenda
 
 - Cadastro de arenas fáceis, médias e difíceis.
-- Gerador das três rodadas garantindo que cada equipe passe pelos três níveis.
+- Geração das três rodadas garantindo a passagem de cada equipe pelos diferentes níveis.
 - Balanceamento entre arenas do mesmo nível.
-- Validação de que todas as arenas selecionadas possuem a mesma pontuação máxima teórica.
-- Pausas, almoço, manutenção e outros períodos indisponíveis.
-- Uma sessão não pode começar nem atravessar um período bloqueado.
-- Detecção de conflito quando uma rodada começa antes do término estimado da anterior.
-- Rearranjo manual, troca entre equipes e acompanhamento do estado por mesa.
-- Exportação completa ou por rodada em CSV, cópia em Markdown e impressão por rodada.
+- Bloqueios para almoço, pausas, manutenção e outros períodos indisponíveis.
+- Uma sessão não pode começar nem atravessar um bloqueio cadastrado.
+- Detecção de sobreposição entre o término estimado de uma rodada e o início da seguinte.
+- Rearranjo manual e troca de horários entre equipes.
+- Exportação completa ou por rodada em CSV.
+- Cópia da agenda em Markdown e impressão de tabelas individuais.
 
-### Administração e auditoria
+### Administração, secretaria e auditoria
 
-- Abertura, suspensão e fechamento operacional de turnos/rodadas.
-- Cadastro de árbitros, arenas, mesas, palcos, fases e categorias.
-- Histórico associado a evento, equipe, mesa, sessão, tablet, pessoa e papel.
-- Filtros por período, operador, terminal, equipe e tipo de ação.
-- Comparação e restauração de versões concorrentes da ficha.
-- Publicação do ranking ao vivo ou em lotes manuais, com histórico e restauração.
+- Abertura, suspensão e fechamento operacional de turnos e rodadas.
+- Cadastro de eventos, categorias, equipes, árbitros, arenas, mesas, palcos e fases.
+- Correção de notas finalizadas mediante senha administrativa, responsável e justificativa.
+- Histórico por evento, equipe, mesa, sessão, tablet, pessoa, período e tipo de ação.
+- Registro de logins, sessões, cronômetros, rascunhos, notas, publicações e configurações.
+- Ranking ao vivo ou publicação manual em lotes.
+- Histórico e restauração de lotes publicados.
 - Recursos formais e homologação dos resultados.
 
-### Telões públicos
+## Telões públicos
 
-- `/view` abre a tela pública padrão.
-- `/view/<nome>` abre uma tela configurada, por exemplo `/view/ranking`.
-- Quantidade livre de telas: é possível deixar uma rota diferente em cada monitor.
-- Views de ranking, agenda, chamadas, situação das mesas, avisos e imagens.
-- Rotação automática configurável; o telão não exige clique.
-- Navegação de teste pela barra inferior ou pelas setas do teclado.
-- Paginação automática para manter todo o conteúdo dentro da tela.
-- Ranking animado com mudança de posição, variação da nota e destaque de correções.
-- Chamadas recentes no topo da fila e exibição simultânea de até três alertas.
-- Avisos com Markdown básico, títulos, negrito e imagens.
-- Logo personalizado por evento e paleta visual da OBR.
+`/view` abre a tela pública padrão. Cada configuração adicional recebe uma rota própria em `/view/<nome>`, como `/view/ranking`, permitindo usar uma apresentação diferente em cada monitor.
 
-### Olimpo
+As telas podem combinar:
 
-- Importação de equipes por token, com prévia das inclusões e alterações.
-- Associação persistente do ID da equipe, etapa e token externos.
-- Envio manual e sincronização automática em intervalos de 1, 5, 10, 15 ou 30 minutos.
-- Contrato compatível com o plugin OBR do Tournamenter:
+- ranking por categoria, animado quando equipes sobem ou descem;
+- notas atualizadas e destaque visual de correções;
+- horários das competições;
+- chamadas de equipes, com as mais recentes no topo;
+- fila de alertas, exibindo até três simultaneamente;
+- situação das mesas, equipe atual, próxima equipe e atraso;
+- avisos com Markdown e imagens;
+- imagens em tela cheia;
+- logo personalizado do evento.
+
+A ordem, duração, categoria, aparência e rotação são configuradas pela administração. O telão avança automaticamente, sem exigir clique. Para testes, também é possível escolher uma etapa pela barra inferior ou usar as setas do teclado. Listas grandes são paginadas para permanecer dentro da área visível.
+
+## Integração com o Olímpo
+
+O Valhalla importa equipes usando os dados externos do Olímpo e mantém associados o ID da equipe, o ID da etapa e o token do evento. Antes da importação, a administração recebe uma prévia das inclusões e alterações.
+
+Os resultados podem ser enviados manualmente ou sincronizados em intervalos configuráveis. O payload segue o contrato utilizado pelo plugin OBR do Tournamenter:
 
 ```http
 POST https://olimpo.robocup.org.br/api/events/steps/score
@@ -315,48 +119,54 @@ Content-Type: application/json
 { "steps": [...] }
 ```
 
-- Registro da última tentativa, retorno do serviço e falhas no painel de diagnóstico.
-- Agrupamento correto por etapa e token, com ficha serializada em `dataMap` e valores em `headersMap`.
-- Nova tentativa no próximo intervalo quando a internet volta.
+As equipes são agrupadas corretamente por etapa e token. Os valores calculados seguem em `headersMap`, enquanto a ficha serializada correspondente segue em `dataMap`. A última tentativa, o retorno do serviço e eventuais falhas aparecem no painel de diagnóstico. Se a internet estiver indisponível, uma nova tentativa ocorre no próximo intervalo configurado.
 
-### Contingência
+## Perfis de acesso
 
-- Backup completo em JSON e validação SHA-256 antes de restaurar.
-- Snapshots manuais e backups automáticos periódicos, retendo os 50 mais recentes.
-- Backups automáticos usam o mesmo formato restaurável do backup manual.
-- Exportações de resultado em CSV e PDF.
-- Health check em `/api/health`, latência do banco, uptime, rascunhos pendentes e últimas falhas.
-- Manual operacional dentro do painel e [manual completo](public/CONTINGENCY_MANUAL.md).
-- Aplicação instalável como PWA e utilizável no servidor local sem internet.
+| Perfil        | Acesso                                                                |
+| ------------- | --------------------------------------------------------------------- |
+| Administração | Evento, equipes, regras, agenda, auditoria, publicação e contingência |
+| Arbitragem    | Operação de qualquer mesa ou palco e preenchimento das fichas         |
+| Secretaria    | Acompanhamento e ações operacionais                                   |
+| Público       | Telões em `/view` e `/view/<nome>`, sem autenticação                  |
+
+A autenticação é local, sem e-mail ou OAuth. Cada evento possui senhas para administração, arbitragem e secretaria. Somente um evento fica ativo por vez.
 
 ## Banco demonstrativo
 
-O seed padrão representa uma **OBR Regional Paraíba 2026** e contém 16 equipes paraibanas, árbitros, arenas fácil/média/difícil, mesas de entrevista, palco, desafio surpresa, três rodadas práticas, pausas, agenda, fichas, ranking, auditoria, recurso e views públicas.
+O seed cria uma **OBR Regional Paraíba 2026** com 16 equipes, árbitros, três arenas, mesas de entrevista, palco, apresentação extra, desafio surpresa, pausas, agenda, fichas, ranking, auditoria, recurso e telões públicos.
 
-| Papel         | Senha de demonstração |
-| ------------- | --------------------- |
-| Administração | `teste123`            |
-| Arbitragem    | `teste123`            |
-| Secretaria    | `teste123`            |
+| Perfil        | Senha      |
+| ------------- | ---------- |
+| Administração | `teste123` |
+| Arbitragem    | `teste123` |
+| Secretaria    | `teste123` |
 
-> O seed remove os eventos do banco apontado por `DATABASE_URL`. Use somente em uma base de demonstração.
+> O seed substitui todos os eventos no banco indicado por `DATABASE_URL`. Use-o somente em uma base de demonstração.
 
 ```bash
 npm run db:test-seed
 ```
 
-## Instalação local
+## Instalação
 
-Requisitos: Node.js 20 ou superior, npm e uma máquina acessível pelos tablets na mesma rede.
+### Requisitos
+
+- [Node.js](https://nodejs.org/) 20 ou superior;
+- npm;
+- máquina acessível pelos tablets na mesma rede;
+- Docker e Docker Compose, caso prefira executar em contêiner.
+
+### Execução local
 
 ```bash
-git clone https://github.com/tahaluh/Valhalla.git
+git clone https://github.com/OtacilioN/Valhalla.git
 cd Valhalla
 npm install
 cp .env.example .env.local
 ```
 
-Edite `.env.local`:
+Configure `.env.local`:
 
 ```dotenv
 SESSION_SECRET="gere-uma-chave-segura-com-pelo-menos-32-caracteres"
@@ -366,7 +176,7 @@ SESSION_COOKIE_SECURE="false"
 OLIMPO_SCORE_API_URL="https://olimpo.robocup.org.br/api/events/steps/score"
 ```
 
-Prepare e execute:
+Prepare o banco, gere a aplicação e inicie o servidor:
 
 ```bash
 npm run prisma:migrate
@@ -376,7 +186,7 @@ npm run server:start
 
 Abra `http://localhost:3000` no servidor ou `http://IP-DO-SERVIDOR:3000` nos tablets.
 
-### Comandos de operação
+### Comandos do servidor
 
 ```bash
 npm run server:start
@@ -386,18 +196,9 @@ npm run server:stop
 npm run server:logs
 ```
 
-PID e logs ficam dentro do projeto.
+O inicializador carrega `.env.local` ou `.env`, adapta o caminho relativo do SQLite para a build standalone e mantém PID e logs dentro do projeto.
 
-### Desenvolvimento e verificação
-
-```bash
-npm run dev
-npm run type-check
-npm test
-npm run build
-```
-
-## Docker
+### Docker
 
 ```bash
 cp .env.example .env
@@ -405,31 +206,47 @@ docker compose up --build -d
 docker compose ps
 ```
 
-Os dados SQLite são mantidos no volume `valhalla_data`. Em uma competição real, copie também os backups para outra máquina ou mídia.
+O banco SQLite é mantido no volume `valhalla_data`.
 
-## Roteiro recomendado para o evento
+## Contingência
 
-1. Crie o evento e cadastre os árbitros.
-2. Importe as equipes do Olimpo e confira a prévia.
-3. Configure categorias, regras e arenas, indicando fácil, média e difícil.
-4. Cadastre pausas e defina o início das três rodadas.
-5. Gere a agenda, corrija conflitos e exporte as tabelas.
-6. Configure as telas públicas e abra cada rota no monitor correspondente.
-7. Crie um snapshot, confira `/api/health` e teste os tablets.
-8. Abra o turno; cada árbitro escolhe mesa, turno e equipe na fila.
-9. Acompanhe rascunhos, conflitos, correções e auditoria.
-10. Publique os resultados, resolva recursos, homologue e sincronize com o Olimpo.
-11. Baixe backup, CSV e PDF ao encerrar o evento.
+- Backup completo em JSON com validação SHA-256 antes da restauração.
+- Snapshots manuais e backups automáticos, retendo os 50 mais recentes.
+- Mesmo formato restaurável para backups manuais e automáticos.
+- Exportação de resultados em CSV e PDF.
+- Health check em `/api/health`.
+- Painel com latência do banco, uptime, rascunhos pendentes e últimas falhas.
+- Aplicação instalável como PWA e utilizável no servidor local sem internet.
+- [Manual de contingência](public/CONTINGENCY_MANUAL.md).
 
-## Testes automatizados
+Em uma competição oficial, teste todos os tablets na rede, restaure um backup em outra máquina antes do evento e mantenha uma cópia externa dos arquivos gerados.
 
-A suíte cobre autenticação, regras de pontuação, duas melhores rodadas, desempates, consenso e normalização artística, penalidades acumuladas, estados de fase, autorização administrativa, concorrência, lotes de publicação, tentativas 4ª+, equivalência e rodízio das arenas, pausas, conflitos de horário e payload do Olímpo.
+## Roteiro recomendado
+
+1. Crie o evento e cadastre a equipe de arbitragem.
+2. Importe as equipes do Olímpo e confira a prévia.
+3. Revise categorias, fórmulas, rulesets e arenas.
+4. Confirme que as arenas possuem a mesma pontuação máxima.
+5. Cadastre pausas e defina o início das rodadas.
+6. Gere a agenda, resolva conflitos e exporte as tabelas.
+7. Configure uma ou mais telas públicas e abra cada rota no monitor correspondente.
+8. Crie um snapshot, confira `/api/health` e teste os tablets.
+9. Abra o turno; cada árbitro escolhe o posto, o turno e a equipe na fila.
+10. Acompanhe rascunhos, conflitos, correções e auditoria.
+11. Publique os resultados, resolva recursos, homologue e sincronize com o Olímpo.
+12. Exporte os resultados e faça o backup final.
+
+## Desenvolvimento
 
 ```bash
+npm run dev
 npm run type-check
 npm test
+npm run lint
 npm run build
 ```
+
+A suíte automatizada cobre autenticação, regras de pontuação, duas melhores rodadas, desempates, consenso e normalização artística, penalidades acumuladas, estados de fase, autorização administrativa, concorrência, lotes de publicação, tentativas adicionais, equivalência e rodízio das arenas, pausas, conflitos de horário e payload do Olímpo.
 
 ## Arquitetura
 
@@ -442,24 +259,38 @@ npm run build
 | Sessão               | iron-session          |
 | Validação            | Zod                   |
 | Estilos              | Tailwind CSS          |
+| Componentes          | shadcn/ui             |
 | PDF                  | pdf-lib               |
+| Contêiner            | Docker Compose        |
 
-As regras puras ficam em `src/domain`, os cálculos em `src/application`, persistência e sessão em `src/infrastructure`, procedimentos tRPC em `src/server` e páginas em `src/app`.
+```text
+src/
+├── app/             páginas, dashboards, API e telões
+├── domain/          entidades e regras puras
+├── application/     serviços de aplicação e pontuação
+├── infrastructure/ banco, repositórios e sessão
+├── presentation/   componentes compartilhados de interface
+├── server/          procedimentos tRPC, jobs e integrações
+└── lib/             utilitários e cliente tRPC
+```
+
+O projeto mantém separação entre domínio, aplicação, infraestrutura e apresentação, com TypeScript estrito, validação por Zod e contratos tipados de ponta a ponta pelo tRPC.
 
 ## Segurança e limites operacionais
 
-- Alterar uma ficha finalizada exige autorização administrativa e gera histórico.
-- Logs não são editáveis pela interface.
-- Não exponha o servidor na internet sem HTTPS, firewall e senhas fortes.
-- A sincronização com o Olimpo depende de internet e IDs/tokens reais importados.
-- Antes de uma etapa oficial, ensaie com todos os tablets e restaure um backup em outra máquina.
+- Toda alteração de uma ficha finalizada exige autorização administrativa e gera histórico.
+- Logs não podem ser editados pela interface.
+- Não exponha o servidor à internet sem HTTPS, firewall e senhas fortes.
+- A sincronização com o Olímpo depende de conexão e credenciais externas válidas.
 - O regulamento oficial da OBR prevalece sobre qualquer comportamento do software.
 
 ## Documentação adicional
 
-- [Plano funcional completo](docs/OBR_PRESENTIAL_MASTER_PLAN.md)
+- [Plano funcional](docs/OBR_PRESENTIAL_MASTER_PLAN.md)
 - [Manual de contingência](public/CONTINGENCY_MANUAL.md)
 
-## Licença e contribuições
+## Autoria, licença e contribuições
 
-Valhalla foi criado por [Otacilio Maia](https://github.com/OtacilioN) e distribuído sob a licença MIT. Issues e pull requests devem descrever o cenário operacional, a regra afetada, como reproduzir e quais testes foram executados.
+Valhalla foi criado por [Otacilio Maia](https://github.com/OtacilioN) e é distribuído sob a licença MIT.
+
+Issues e pull requests devem informar o cenário operacional, a regra afetada, como reproduzir o comportamento e quais testes foram executados.
